@@ -34,14 +34,12 @@ export function apply(ctx: Context, config: Config): void {
       parameters: {
         only: {
           type: 'string',
-          required: false,
-          enum: ['api', 'ui', 'all'],
-          description: '只执行 api / ui，默认 all。',
+          description: '只执行 api / ui / all，默认 all。',
         },
-        skipGen: { type: 'boolean', required: false, description: '跳过 Harness 生成阶段。' },
-        dryDb: { type: 'boolean', required: false, description: 'MySQL 回流只演练不写库。' },
-        noDb: { type: 'boolean', required: false, description: '本次不执行 MySQL 回流。' },
-        timeoutSec: { type: 'number', required: false, description: '流水线超时秒数。' },
+        skipGen: { type: 'boolean', description: '跳过 Harness 生成阶段。' },
+        dryDb: { type: 'boolean', description: 'MySQL 回流只演练不写库。' },
+        noDb: { type: 'boolean', description: '本次不执行 MySQL 回流。' },
+        timeoutSec: { type: 'number', description: '流水线超时秒数。' },
       },
       output: {
         schema: { type: 'string' },
@@ -50,7 +48,11 @@ export function apply(ctx: Context, config: Config): void {
       async execute(args) {
         const workflowDir = config.workflowDir ? path.resolve(config.workflowDir) : packageRoot
         const script = path.join(workflowDir, 'scripts', 'run_pipeline.py')
-        const cliArgs = ['--only', String(args.only || 'all')]
+        const only = String(args.only || 'all')
+        if (!['api', 'ui', 'all'].includes(only)) {
+          throw new Error('only 必须是 api / ui / all 之一')
+        }
+        const cliArgs = ['--only', only]
         if (args.skipGen) cliArgs.push('--skip-gen')
         if (args.dryDb) cliArgs.push('--dry-db')
         if (args.noDb) cliArgs.push('--no-db')
