@@ -102,6 +102,9 @@ def main():
     # ⑥ 测试报告
     _run("⑥ 测试报告", ["scripts/make_report.py"])
 
+    # ⑥b qa-toolkit 扩展能力（登录 / 真实 API 执行 / 产物审核；按配置开关，失败不阻断）
+    _run("⑥b qa-toolkit 扩展能力", ["scripts/qa_extended.py"], allow_fail=True)
+
     # ⑦ MySQL 回流
     if args.no_db:
         print("\n▶ 阶段[⑦ MySQL 回流]: 已跳过（--no-db）")

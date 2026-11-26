@@ -119,6 +119,9 @@ dsh-workflow/
 │   ├── import_external_results.py  # 外部执行结果导入器（把别的通道结果接进本账本）
 │   ├── bug_tracker.py       # 缺陷台账（要素模型 + 状态机 + 同根因归并 + 流转留痕）
 │   ├── gen_playwright.py    # Playwright 定位脚本产物（DSL 生成 + 外部脚本导入）
+│   ├── ego_client.py        # ego-browser Skill 适配（DSL→JS，含高级交互）
+│   ├── ego_learnings.py     # ego-browser 领域工具包发现/执行（GitHub/Google/X）
+│   ├── qa_extended.py       # qa-toolkit 扩展能力阶段入口
 │   └── db_sync.py           # MySQL 回流（列映射适配你已有表）
 └── skill/dsh-workflow/      # Loomy Skill 编排层
 ```
@@ -306,6 +309,63 @@ python3 scripts/import_external_results.py \
   并同步更新 `summary.overall`；
 - 本批次已执行过的用例不会被重复计数（仅当外部结果更差时才覆盖）。
 
+## 外部插件能力接入（ego-browser / qa-toolkit）
+
+dsh-workflow 是编排层，浏览器交互与三层用例流水线分别复用 `ego-browser` 与
+`qa-toolkit` 的原生能力，不复制其代码。
+
+### 1. ego-browser（UI 执行通道）
+
+配置：`config/providers.yaml → ego_browser`（CLI 路径、指南缓存、超时、白名单、领域包目录）。
+
+| 已接入能力 | 入口 |
+| --- | --- |
+| CLI 检测 / 运行时指南刷新 | `scripts/ego_client.py` |
+| 基础 DSL：`goto`/`click`/`fill`/`press`/`check`/`select`/`wait`/`screenshot` + 三类断言 | `ego_client._emit_action` |
+| 视觉交互：`mouse_click`/`mouse_move`/`mouse_wheel`/`key_press`/`type_text`/`paste`/`insert_text` | 同上 |
+| 页面与弹窗：`reload`/`wait_function`/`popup`/`accept_dialog`/`dismiss_dialog`/`new_page`/`adopt`/`release`/`user_page`/`pages`/`tabs` | 同上 |
+| 文件：`upload`（绝对路径，支持 `\|` 分隔多文件）/ `download`（`saveAs` 到本地绝对路径） | 同上 |
+| Skill 白名单（可扩展到 18 项） | `ego_browser.skill_whitelist` + `_emit_skill` |
+| 领域工具包（GitHub / Google / X 的 Node 工具、浏览器内工具、选择器笔记） | `scripts/ego_learnings.py` |
+
+```bash
+python3 scripts/ego_learnings.py list                          # 列出全部领域工具
+python3 scripts/ego_learnings.py list --domain github
+python3 scripts/ego_learnings.py run --domain github --tool search_repos --args '{"query":"dsh"}'
+python3 scripts/ego_learnings.py snippet --domain github --tool repo-stats
+```
+
+未显式配置时自动探测 `ego-browser/learnings`、DSH profile 内安装目录；
+也可用 `DSH_EGO_LEARNINGS_DIR` 或 `ego_browser.learnings_dir` 指定。
+
+### 2. qa-toolkit（三层用例流水线）
+
+配置：`config/providers.yaml → qa_casepipe`。
+
+**主链路**（已接入）：`gen_cases.py` 生成三层用例 Markdown + Excel、`fill_status.py` 回填状态与
+COUNTIF 统计与场景层聚合、spec → `cases/*.yaml` 转换、Playwright 片段 → DSL 保守翻译。
+
+**扩展能力**（`qa_casepipe.extended`，按项开关，失败不阻断流水线）：
+
+| 开关 | 调用脚本 | 作用 |
+| --- | --- | --- |
+| `login.enabled` | `login.mjs` | Playwright 登录产出 storageState（凭据走环境变量） |
+| `api.enabled` | `api_runner.js` | 真实 API 批量执行 + 断言 + 变量 capture；写操作需 `allow_write: true` |
+| `playwright_template` | `ui_spec_template.ts` | 复制真实环境 Playwright 测试模板到批次记录 |
+| `copy_references` | `references/*.md` | 复制 Excel 列规范与跨项目配置规范到批次记录 |
+| `review.enabled` | `qa_review.py` | 产物审核（9 类错误 / 4 类告警 / P0 占比 / 模拟透明度） |
+
+```bash
+python3 scripts/qa_extended.py --dry-run          # 查看开关与脚本目录探测结果
+python3 scripts/qa_extended.py --run run-xxx      # 执行扩展能力
+```
+
+执行结果写 `records/<run_id>/qa-extended.json`，报告自动生成「qa-toolkit 扩展能力」章节。
+若 qa-toolkit 插件包声明 `"type": "module"` 但 `api_runner.js` 仍用 `require()`，
+适配层会自动以临时 `.cjs` 执行，不改动第三方代码。
+
+需要 `openpyxl>=3.1.0`（已写入 `requirements.txt`）。
+
 ## Playwright 定位脚本产物
 
 UI 自动化不再只有「执行明细」——每次执行都会**从同一份 `cases/ui/*.yaml` DSL 生成
@@ -479,6 +539,9 @@ db:
 | `python3 scripts/bug_tracker.py sync --run run-xxx` | 生成批次缺陷快照（供回流） |
 | `python3 scripts/gen_playwright.py --run run-xxx` | 生成 Playwright 定位脚本产物 |
 | `python3 scripts/gen_playwright.py --import <dir>` | 导入已有生成的 Playwright 脚本 |
+| `python3 scripts/qa_extended.py [--run run-xxx]` | 执行 qa-toolkit 扩展能力（登录/API/审核） |
+| `python3 scripts/ego_learnings.py list` | 列出 ego-browser 领域工具 |
+| `python3 scripts/ego_learnings.py run --domain github --tool search_repos --args '{}'` | 执行领域工具 |
 
 ## 注意事项
 

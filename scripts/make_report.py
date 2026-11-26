@@ -64,6 +64,25 @@ def _functional_section(items: list) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _qa_extended_section(data: dict) -> str:
+    """qa-toolkit 扩展能力执行结果章节。"""
+    steps = (data or {}).get("steps") or []
+    if not steps:
+        return ""
+    lines = [
+        "本次调用 qa-toolkit 的扩展能力（登录 / 真实 API 执行 / 模板规范 / 产物审核）：",
+        "",
+        "| 能力 | 结果 | 说明 |",
+        "| --- | --- | --- |",
+    ]
+    for step in steps:
+        detail = str(step.get("error") or step.get("out") or "-").replace("|", "\\|")[:120]
+        lines.append(f"| {step.get('name') or '-'} | "
+                     f"{'成功' if step.get('ok') else '失败'} | {detail} |")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def _playwright_section(manifest: dict) -> str:
     """Playwright 定位脚本产物章节。"""
     if not manifest or manifest.get("mode") == "disabled":
@@ -290,6 +309,14 @@ def main():
         except Exception:  # noqa: BLE001
             pw_manifest = {}
 
+    qa_ext = {}
+    qa_ext_path = run_dir / "qa-extended.json"
+    if qa_ext_path.exists():
+        try:
+            qa_ext = read_json(qa_ext_path) or {}
+        except Exception:  # noqa: BLE001
+            qa_ext = {}
+
     providers = load_providers()
     env = str(summary.get("config", {}).get("api_base_url") or "")
     casepipe = _casepipe_data(providers, details, run_dir, env)
@@ -323,7 +350,7 @@ def main():
         casepipe_section = _casepipe_section(casepipe.get("scenarios") or [],
                                              casepipe.get("scenario_stats") or {})
 
-    numerals = ("三", "四", "五", "六", "七", "八")
+    numerals = ("三", "四", "五", "六", "七", "八", "九")
     extra_sections = []
     functional_section = _functional_section(details)
     if functional_section:
@@ -334,6 +361,9 @@ def main():
     pw_section = _playwright_section(pw_manifest)
     if pw_section:
         extra_sections.append(("Playwright 定位脚本产物", pw_section))
+    qa_ext_section = _qa_extended_section(qa_ext)
+    if qa_ext_section:
+        extra_sections.append(("qa-toolkit 扩展能力", qa_ext_section))
     if casepipe_section:
         extra_sections.append(("场景层状态统计（qa-case-pipeline）", casepipe_section))
     index = 0
@@ -372,6 +402,7 @@ def main():
         "bugs": bugs,
         "bug_stats": (__import__("bug_tracker").stats(bugs) if bugs else {}),
         "playwright_scripts": pw_manifest,
+        "qa_toolkit_extended": qa_ext,
         "module_distribution": {},
         "qa_pipeline": casepipe,
     }

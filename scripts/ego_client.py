@@ -164,6 +164,85 @@ def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
         lines.append(f"await page.waitForSelector({_js(arg1)}, {{ state: 'visible', timeout: {timeout_ms} }});")
         lines.append(f"report.assert_detail.push({{ name: 'expect_visible', expected: {_js(arg1)}, actual: 'visible', passed: true }});")
         step_ok("assert")
+    elif verb in ("mouse_click", "mouse_move", "mouse_wheel"):
+        # 用法: mouse_click 420,260 [说明] / mouse_move 420,260 / mouse_wheel 0,600
+        try:
+            x, y = (int(v.strip()) for v in arg1.split(",", 1))
+        except (ValueError, TypeError):
+            raise ValueError(f"mouse 动作坐标格式错误: {arg1}（应为 x,y）")
+        label = arg2 or f"dsh {verb} step {idx}"
+        call = {"mouse_click": f"click({x}, {y}", "mouse_move": f"move({x}, {y}",
+                "mouse_wheel": f"wheel({x}, {y}"}[verb]
+        lines.append(f"await page.mouse.{call}, {{ label: {_js(label)} }});")
+        step_ok(verb)
+    elif verb in ("key_press", "type_text", "paste", "insert_text"):
+        method = {"key_press": "press", "type_text": "type",
+                  "paste": "paste", "insert_text": "insertText"}[verb]
+        value = arg1 if verb == "key_press" else " ".join(p for p in (arg1, arg2) if p)
+        lines.append(f"await page.keyboard.{method}({_js(value)});")
+        step_ok(verb)
+    elif verb == "reload":
+        lines.append("await page.reload();")
+        lines.append("await page.waitForLoadState();")
+        step_ok("reload")
+    elif verb == "wait_function":
+        expression = " ".join(p for p in (arg1, arg2) if p)
+        lines.append(f"await page.waitForFunction({_js(expression)}, null, {{ timeout: {timeout_ms} }});")
+        step_ok("wait_function")
+    elif verb == "upload":
+        # 用法: upload <selector> <绝对路径>; 多路径用 | 分隔
+        if not arg1 or not arg2:
+            raise ValueError("upload 动作需提供 selector 与绝对路径")
+        paths = [str(Path(p.strip()).resolve()) for p in arg2.split("|") if p.strip()]
+        lines.append(f"await page.setInputFiles({_js(arg1)}, {_js(paths)});")
+        step_ok("upload")
+    elif verb == "download":
+        # 用法: download <触发selector> <保存绝对路径>
+        if not arg1 or not arg2:
+            raise ValueError("download 动作需提供触发 selector 与保存路径")
+        dest = str(Path(arg2).resolve())
+        lines.append(f"const dp{idx} = page.waitForEvent('download', {{ timeout: {timeout_ms} }});")
+        lines.append(f"await page.click({_js(arg1)});")
+        lines.append(f"const dl{idx} = await dp{idx};")
+        lines.append(f"await dl{idx}.saveAs({_js(dest)});")
+        report_extra = f"report.downloads.push({{ url: dl{idx}.url(), path: {_js(dest)} }});"
+        lines.append(report_extra)
+        step_ok("download")
+    elif verb == "popup":
+        # 用法: popup <触发selector>；新页面作为 p2/task.page
+        if not arg1:
+            raise ValueError("popup 动作需提供触发 selector")
+        lines.append(f"const pp{idx} = page.waitForEvent('popup');")
+        lines.append(f"await page.click({_js(arg1)});")
+        lines.append(f"const pop{idx} = await pp{idx};")
+        lines.append(f"await pop{idx}.waitForLoadState();")
+        lines.append(f"report.skill_results.push({{ skill: 'popup', args: {{ selector: {_js(arg1)} }}, "
+                     f"result: await pop{idx}.url() }});")
+        step_ok("popup")
+    elif verb in ("accept_dialog", "dismiss_dialog"):
+        method = "acceptDialog" if verb == "accept_dialog" else "dismissDialog"
+        lines.append(f"await page.{method}({_js(arg1)});" if arg1 else f"await page.{method}();")
+        step_ok(verb)
+    elif verb in ("new_page", "adopt", "release", "user_page", "pages", "tabs"):
+        if verb == "new_page":
+            lines.append("const np = await task.newPage();")
+            lines.append("report.skill_results.push({ skill: 'new_page', args: {}, result: np.label });")
+        elif verb == "adopt":
+            lines.append(f"const ad = await task.adopt((await task.tabs())"
+                         f".find((t) => t.active && !t.label)?.page);")
+            lines.append("report.skill_results.push({ skill: 'adopt', args: {}, result: ad?.label || 'none' });")
+        elif verb == "release":
+            lines.append(f"await task.release({_js(arg1 or 'p1')});")
+            lines.append(f"report.skill_results.push({{ skill: 'release', args: {{ label: {_js(arg1 or 'p1')} }}, result: 'ok' }});")
+        elif verb == "user_page":
+            lines.append("const up = task.userPage();")
+            lines.append("report.skill_results.push({ skill: 'user_page', args: {}, result: await up.url() });")
+        else:
+            method = "pages" if verb == "pages" else "tabs"
+            lines.append(f"const listing = await task.{method}();")
+            lines.append(f"report.skill_results.push({{ skill: {_js(verb)}, args: {{}}, "
+                         f"result: listing.map((p) => p.label || p.targetId) }});")
+        step_ok(verb)
     elif verb == "skill":
         if len(parts) < 2 or not arg1:
             raise ValueError("skill 动作缺少技能名")
@@ -173,14 +252,15 @@ def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
             args = json.loads(arg2) if arg2.strip() else {}
         except json.JSONDecodeError as e:
             raise ValueError(f"skill 参数不是合法 JSON: {e}")
-        lines.extend(_emit_skill(arg1, args, idx, shot_dir, cid))
+        lines.extend(_emit_skill(arg1, args, idx, shot_dir, cid, timeout_ms))
         step_ok("skill:" + arg1)
     else:
         raise ValueError(f"未知 UI 动作 `{verb}`（步骤: {action}）")
     return lines
 
 
-def _emit_skill(skill: str, args: dict, idx: int, shot_dir: Path, cid: str) -> list:
+def _emit_skill(skill: str, args: dict, idx: int, shot_dir: Path, cid: str,
+                timeout_ms: int = 30000) -> list:
     """把白名单技能翻译成 ego-browser API 调用。"""
     lines = [f"const a{idx} = {_js(args)};"]
     if skill in ("snapshot", "dom_inspect"):
@@ -226,6 +306,72 @@ def _emit_skill(skill: str, args: dict, idx: int, shot_dir: Path, cid: str) -> l
     elif skill == "handoff":
         lines.append("await task.handOff();")
         lines.append(f"report.skill_results.push({{ skill: 'handoff', args: a{idx}, result: 'user control' }});")
+    elif skill == "mouse":
+        method = str(args.get("action") or "click")
+        x, y = int(args.get("x") or 0), int(args.get("y") or 0)
+        lines.append(f"await page.mouse.{method}({x}, {y}, {{ label: {_js(args.get('label') or 'dsh mouse')} }});")
+        lines.append(f"report.skill_results.push({{ skill: 'mouse', args: a{idx}, result: 'ok' }});")
+    elif skill == "keyboard":
+        method = str(args.get("action") or "press")
+        value = str(args.get("text") or args.get("key") or "")
+        if method in ("paste", "insertText"):
+            lines.append(f"await page.keyboard.{method}({_js(value)});")
+        else:
+            lines.append(f"await page.keyboard.{method}({_js(value)});")
+        lines.append(f"report.skill_results.push({{ skill: 'keyboard', args: a{idx}, result: 'ok' }});")
+    elif skill == "popup":
+        lines.append(f"const pp{idx} = page.waitForEvent('popup');")
+        lines.append(f"await page.click({_js(args.get('selector') or 'a')});")
+        lines.append(f"const pop{idx} = await pp{idx}; await pop{idx}.waitForLoadState();")
+        lines.append(f"report.skill_results.push({{ skill: 'popup', args: a{idx}, "
+                     f"result: await pop{idx}.url() }});")
+    elif skill == "upload":
+        paths = [str(Path(p).resolve()) for p in (args.get("paths") or [])]
+        lines.append(f"await page.setInputFiles({_js(args.get('selector') or 'input[type=file]')}, {_js(paths)});")
+        lines.append(f"report.skill_results.push({{ skill: 'upload', args: a{idx}, result: 'ok' }});")
+    elif skill == "download":
+        dest = str(Path(args.get("path") or (shot_dir / f"download-{cid}")).resolve())
+        lines.append(f"const dp{idx} = page.waitForEvent('download', {{ timeout: {timeout_ms} }});")
+        lines.append(f"await page.click({_js(args.get('selector') or 'button.download')});")
+        lines.append(f"const dl{idx} = await dp{idx}; await dl{idx}.saveAs({_js(dest)});")
+        lines.append(f"report.downloads.push({{ url: dl{idx}.url(), path: {_js(dest)} }});")
+        lines.append(f"report.skill_results.push({{ skill: 'download', args: a{idx}, result: {_js(dest)} }});")
+    elif skill in ("adopt", "release", "user_page", "new_page", "pages", "tabs"):
+        if skill == "adopt":
+            lines.append("const ad = await task.adopt((await task.tabs())"
+                         ".find((t) => t.active && !t.label)?.page);")
+            result_expr = "ad?.label || 'none'"
+        elif skill == "release":
+            lines.append(f"await task.release({_js(args.get('label') or 'p1')});")
+            result_expr = "'ok'"
+        elif skill == "user_page":
+            lines.append("const up = task.userPage();")
+            result_expr = "await up.url()"
+        elif skill == "new_page":
+            lines.append("const np = await task.newPage();")
+            result_expr = "np.label"
+        else:
+            method = "pages" if skill == "pages" else "tabs"
+            lines.append(f"const listing = await task.{method}();")
+            result_expr = "listing.map((p) => p.label || p.targetId)"
+        lines.append(f"report.skill_results.push({{ skill: {_js(skill)}, args: a{idx}, "
+                     f"result: {result_expr} }});")
+    elif skill == "wait_function":
+        lines.append(f"await page.waitForFunction({_js(args.get('expression') or 'true')}, null, "
+                     f"{{ timeout: {args.get('timeout') or timeout_ms} }});")
+        lines.append(f"report.skill_results.push({{ skill: 'wait_function', args: a{idx}, result: 'ok' }});")
+    elif skill == "reload":
+        lines.append("await page.reload(); await page.waitForLoadState();")
+        lines.append(f"report.skill_results.push({{ skill: 'reload', args: a{idx}, result: 'ok' }});")
+    elif skill in ("clear_state", "clear_cookies"):
+        lines.append("await page.cdp('Storage.clearDataForOrigin', { origin: a" + str(idx)
+                     + ".origin || location.origin, storageTypes: 'cookies,local_storage,indexed_db' });")
+        if args.get("reload", True):
+            lines.append("await page.reload({ ignoreCache: true });")
+        lines.append(f"report.skill_results.push({{ skill: {_js(skill)}, args: a{idx}, result: 'ok' }});")
+    elif skill == "claim_space":
+        lines.append(f"const cs = await claimTaskSpace({_js(args.get('spaceId') or '')});")
+        lines.append(f"report.skill_results.push({{ skill: 'claim_space', args: a{idx}, result: cs.spaceId }});")
     else:
         raise ValueError(f"暂不支持的 EGO 技能 `{skill}`，请查看运行时指南: {guide_path()}")
     return lines
@@ -244,7 +390,8 @@ def run_case(case_id: str, steps: list, base_url: str = "", run_id: str = "",
 
     js_lines = [
         f"const SHOT_DIR = {_js(str(shot_dir))};",
-        "const report = { status: 'passed', steps: [], assert_detail: [], skill_results: [], screenshot_path: '' };",
+        "const report = { status: 'passed', steps: [], assert_detail: [], skill_results: [], "
+        "downloads: [], screenshot_path: '' };",
         "let currentStep = 0;",
         f"const task = await taskSpace({_js('dsh-' + safe_case_id(run_id or 'run') + '-' + safe_case_id(case_id))});",
         "const page = task.page('p1');",

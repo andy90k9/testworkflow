@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dsh_common import WORKFLOW_ROOT, resolve, write_json  # noqa: E402
+from dsh_common import WORKFLOW_ROOT, resolve, read_json, write_json  # noqa: E402
 
 try:
     import yaml
@@ -545,6 +545,217 @@ def generate(spec: Path, out_md: Path, out_xlsx: Path | None = None,
         "stdout": (proc.stdout or "")[-1000:],
         "stderr": (proc.stderr or "")[-1000:],
     }
+
+
+# ---------------------------------------------------------------- qa-toolkit 其余能力
+# 已接入：gen_cases.py / fill_status.py
+# 本段接入：login.mjs / api_runner.js / qa_review.py / ui_spec_template.ts / references
+
+def _run_tool(cmd: list, timeout: int = 180, env: dict | None = None) -> dict:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=timeout, env=env, cwd=str(WORKFLOW_ROOT))
+        return {"ok": proc.returncode == 0, "returncode": proc.returncode,
+                "stdout": (proc.stdout or "")[-2000:], "stderr": (proc.stderr or "")[-2000:]}
+    except FileNotFoundError as exc:
+        return {"ok": False, "error": f"命令不存在: {exc}"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"执行超时（{timeout}s）"}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+def qa_login(config: Path, scripts_dir: str = "", headed: bool = False,
+             show: bool = False, env_extra: dict | None = None) -> dict:
+    """调用 qa-toolkit 的 login.mjs：Playwright 登录并产出 storageState。"""
+    scripts = find_scripts_dir(scripts_dir)
+    if not scripts:
+        return {"ok": False, "error": "未找到 qa-case-pipeline scripts 目录"}
+    if not Path(config).exists():
+        return {"ok": False, "error": f"登录配置不存在: {config}"}
+    cmd = ["node", str(scripts / "login.mjs"), "--config", str(Path(config).resolve())]
+    if headed:
+        cmd.append("--headed")
+    if show:
+        cmd.append("--show")
+    env = os.environ.copy()
+    env.update(env_extra or {})
+    result = _run_tool(cmd, timeout=180, env=env)
+    result["script"] = "login.mjs"
+    return result
+
+
+def _node_script_path(script: Path) -> tuple[Path, Path | None]:
+    """处理 qa-toolkit 上游 api_runner.js 的 ESM/CommonJS 冲突。
+
+    插件包声明 `"type": "module"`，但脚本内部使用 `require()`。
+    检测到这种组合时，复制为临时 `.cjs` 文件执行（脚本不依赖 __dirname）。
+    返回 (实际执行路径, 需要清理的临时路径)。
+    """
+    try:
+        source = script.read_text(encoding="utf-8")
+    except OSError:
+        return script, None
+    if "require(" not in source:
+        return script, None
+    parents = list(script.parents)[:6]
+    for parent in parents:
+        pkg = parent / "package.json"
+        if pkg.exists():
+            try:
+                data = json.loads(pkg.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                break
+            if str(data.get("type") or "").lower() == "module":
+                import tempfile
+
+                tmp = Path(tempfile.gettempdir()) / f"dsh-{script.stem}-{os.getpid()}.cjs"
+                tmp.write_text(source, encoding="utf-8")
+                return tmp, tmp
+            break
+    return script, None
+
+
+def qa_api_run(plan: Path, out: Path, config: Path | None = None,
+               scripts_dir: str = "", allow_write: bool = False,
+               env_extra: dict | None = None) -> dict:
+    """调用 qa-toolkit 的 api_runner.js：真实 API 批量执行 + 断言 + 结果 JSON。"""
+    scripts = find_scripts_dir(scripts_dir)
+    if not scripts:
+        return {"ok": False, "error": "未找到 qa-case-pipeline scripts 目录"}
+    if not Path(plan).exists():
+        return {"ok": False, "error": f"API 计划不存在: {plan}"}
+    runner, tmp = _node_script_path(scripts / "api_runner.js")
+    cmd = ["node", str(runner), "--plan", str(Path(plan).resolve()),
+           "--out", str(Path(out).resolve())]
+    if config and Path(config).exists():
+        cmd += ["--config", str(Path(config).resolve())]
+    if allow_write:
+        cmd.append("--allow-write")
+    env = os.environ.copy()
+    env.update(env_extra or {})
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        result = _run_tool(cmd, timeout=300, env=env)
+    finally:
+        if tmp:
+            tmp.unlink(missing_ok=True)
+    result.update({"script": "api_runner.js", "out": str(out),
+                   "results": _read_json_safe(out)})
+    return result
+
+
+def qa_review(xlsx: Path, results: list, out: Path, evidence_root: Path | None = None,
+              scripts_dir: str = "", strict: bool = False) -> dict:
+    """调用 qa-toolkit 的 qa_review.py：产物审核（错误/告警/P0 占比/模拟透明度）。"""
+    scripts = find_scripts_dir(scripts_dir)
+    if not scripts:
+        return {"ok": False, "error": "未找到 qa-case-pipeline scripts 目录"}
+    if not Path(xlsx).exists():
+        return {"ok": False, "error": f"用例 Excel 不存在: {xlsx}"}
+    cmd = [sys.executable, str(scripts / "qa_review.py"), "--xlsx", str(Path(xlsx).resolve())]
+    for item in results or []:
+        p = Path(item)
+        if p.exists():
+            cmd += ["--results", str(p.resolve())]
+    if evidence_root:
+        cmd += ["--evidence-root", str(Path(evidence_root).resolve())]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cmd += ["--out", str(out.resolve())]
+    if strict:
+        cmd.append("--strict")
+    result = _run_tool(cmd, timeout=180)
+    result.update({"script": "qa_review.py", "out": str(out),
+                   "report": out.read_text(encoding="utf-8")[:4000] if out.exists() else ""})
+    return result
+
+
+def qa_playwright_template(dest: Path, scripts_dir: str = "") -> dict:
+    """复制 qa-toolkit 的 ui_spec_template.ts 作为真实环境 Playwright 测试模板。"""
+    scripts = find_scripts_dir(scripts_dir)
+    if not scripts:
+        return {"ok": False, "error": "未找到 qa-case-pipeline scripts 目录"}
+    src = scripts / "ui_spec_template.ts"
+    if not src.exists():
+        return {"ok": False, "error": f"模板不存在: {src}"}
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    return {"ok": True, "script": "ui_spec_template.ts", "out": str(dest)}
+
+
+def qa_copy_references(dest_dir: Path, scripts_dir: str = "") -> dict:
+    """把 qa-toolkit 的两篇规范复制进批次产物，供追溯。"""
+    scripts = find_scripts_dir(scripts_dir)
+    if not scripts:
+        return {"ok": False, "error": "未找到 qa-case-pipeline scripts 目录"}
+    ref_src = scripts.parent / "references"
+    copied = []
+    if ref_src.is_dir():
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for name in ("excel-columns.md", "project-config.md"):
+            src = ref_src / name
+            if src.exists():
+                (dest_dir / name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+                copied.append(name)
+    return {"ok": True, "files": copied, "dir": str(dest_dir)}
+
+
+def _read_json_safe(path: Path) -> dict | list | None:
+    try:
+        return read_json(Path(path))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def extended_run(run_dir: Path, pipe: dict, providers: dict | None = None) -> dict:
+    """按顺序跑通 qa-toolkit 扩展能力：登录 → API 执行 → 模板/规范 → 产物审核。
+
+    每项独立捕获异常，任一失败不影响其它项，也不阻断主流水线。
+    """
+    out = {"enabled": False, "steps": []}
+    ext = ((providers or {}).get("qa_casepipe") or {}).get("extended") or {}
+    if not ext.get("enabled"):
+        return out
+    out["enabled"] = True
+    scripts_dir = str(pipe.get("scripts_dir") or "")
+
+    def record(name: str, result: dict):
+        out["steps"].append({"name": name, **result})
+
+    if ext.get("login", {}).get("enabled"):
+        cfg = resolve(ext["login"].get("config") or "")
+        record("login", qa_login(cfg, scripts_dir,
+                                 headed=bool(ext["login"].get("headed")),
+                                 show=bool(ext["login"].get("show")),
+                                 env_extra=ext["login"].get("env") or {}))
+
+    api = ext.get("api") or {}
+    if api.get("enabled"):
+        plan = resolve(api.get("plan") or "")
+        dest = resolve(api.get("out") or f"records/{run_dir.name}/qa-api-results.json")
+        cfg = resolve(api.get("config") or "") if api.get("config") else None
+        record("api_runner", qa_api_run(plan, dest, cfg, scripts_dir,
+                                        allow_write=bool(api.get("allow_write")),
+                                        env_extra=api.get("env") or {}))
+
+    if ext.get("playwright_template"):
+        record("playwright_template",
+               qa_playwright_template(run_dir / "qa-ui-spec.ts", scripts_dir))
+
+    if ext.get("copy_references"):
+        record("references", qa_copy_references(run_dir / "qa-references", scripts_dir))
+
+    review = ext.get("review") or {}
+    if review.get("enabled"):
+        xlsx = resolve(str(review.get("xlsx") or pipe.get("xlsx") or ""))
+        results = [p for p in (review.get("results") or []) if p]
+        dest = resolve(review.get("out") or f"reports/qa-review-{run_dir.name}.md")
+        record("qa_review", qa_review(xlsx, [resolve(p) for p in results], dest,
+                                      scripts_dir=scripts_dir,
+                                      strict=bool(review.get("strict"))))
+
+    out["ok"] = all(step.get("ok", True) for step in out["steps"])
+    return out
 
 
 if __name__ == "__main__":

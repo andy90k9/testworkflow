@@ -273,6 +273,32 @@ UI 自动化不只产出执行明细，还会**从同一份 `cases/ui/*.yaml` DS
   `script_generator` / `script_generated_at` / `script_mode`，无需改表结构
 - 配置：`workflow.yaml → playwright.enabled / inject_auth / storage`
 
+### 4.11 外部插件能力完整接入（ego-browser / qa-toolkit）
+
+dsh-workflow 是编排层，复用两个插件的原生能力，不复制其代码。
+
+**ego-browser**（`scripts/ego_client.py` / `scripts/ego_learnings.py`）：
+- 基础 DSL：goto / click / fill / press / check / select / wait / screenshot + 三类断言
+- 视觉交互：mouse_click / mouse_move / mouse_wheel / key_press / type_text / paste / insert_text
+- 页面与弹窗：reload / wait_function / popup / accept_dialog / dismiss_dialog /
+  new_page / adopt / release / user_page / pages / tabs
+- 文件：upload（绝对路径、`|` 分隔多文件）/ download（saveAs 到本地绝对路径）
+- Skill 白名单扩展到 18 项：`ego_browser.skill_whitelist`，含 mouse/keyboard/popup/
+  upload/download/adopt/release/user_page/new_page/pages/tabs/wait_function/reload/
+  clear_state/clear_cookies/claim_space
+- 领域工具包（GitHub / Google / X）：`ego_learnings.py list | run | snippet`；
+  探测顺序为 `DSH_EGO_LEARNINGS_DIR`、`ego_browser.learnings_dir`、
+  `ego-browser/learnings`、DSH profile 安装目录
+
+**qa-toolkit**（`scripts/qa_casepipe.py` / `scripts/qa_extended.py`）：
+- 主链路：gen_cases.py（三层用例 MD+Excel）、fill_status.py（回填+COUNTIF+场景聚合）、
+  spec→cases/*.yaml、translate_playwright_steps（Playwright 片段→DSL）
+- 扩展能力（`qa_casepipe.extended`，按项开关，失败不阻断）：
+  login.mjs（登录 storageState）、api_runner.js（真实 API 执行+断言+capture）、
+  ui_spec_template.ts（模板）、references/*.md（规范）、qa_review.py（产物审核）
+- 结果写 `records/<run_id>/qa-extended.json`，报告生成「qa-toolkit 扩展能力」章节
+- 兼容：插件包声明 `type: module` 但脚本用 `require()` 时，自动以临时 `.cjs` 执行
+
 ---
 
 ## 5. 接口契约
@@ -757,7 +783,7 @@ dsh-workflow/
 ├─ project/               # requirements/ 与 src/（前置输入）
 ├─ cases/                 # functional/ api/ ui/ 三类用例 YAML
 ├─ tests/                 # api/ 与 ui/ 数据驱动执行器
-├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe / bug_tracker / gen_playwright
+├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe / bug_tracker / gen_playwright / ego_client / ego_learnings / qa_extended
 ├─ skill/dsh-workflow/    # 对话式编排 Skill（本文件评审通过后替换此目录下的 SKILL.md）
 ├─ records/               # current-run.json / run-<run_id>/（含 playwright/ 脚本产物）/ screenshots/
 ├─ reports/               # report-<run_id>.md / .json / .html + qa-cases.md / .xlsx
@@ -779,6 +805,8 @@ dsh-workflow/
 | 缺陷台账 | `python3 scripts/bug_tracker.py list\|show\|stats\|status\|assign\|add\|sync` |
 | 生成 Playwright 脚本 | `python3 scripts/gen_playwright.py [--run <run_id>] [--dry-run]` |
 | 导入已有脚本 | `python3 scripts/gen_playwright.py --import <dir> --run <run_id>` |
+| qa-toolkit 扩展 | `python3 scripts/qa_extended.py [--run <run_id>] [--dry-run]` |
+| ego 领域工具 | `python3 scripts/ego_learnings.py list \| run \| snippet` |
 
 ---
 

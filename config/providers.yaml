@@ -42,6 +42,31 @@ qa_casepipe:
     scenario: 核心链路用例             # 场景层工作表名
     api: API接口用例                  # 接口层工作表名
     ui: UI用例(Playwright)            # UI 层工作表名
+  # qa-toolkit 其余能力：登录 → 真实 API 执行 → 模板/规范 → 产物审核
+  # 每项可独立开关；脚本目录复用上面的 scripts_dir 自动探测
+  extended:
+    enabled: false                    # 总开关；打开后按下面各项开关执行
+    login:
+      enabled: false                  # login.mjs：Playwright 登录产出 storageState
+      config: project/requirements/qa.config.json
+      headed: false
+      show: false
+      env: {}                         # QA_USERNAME / QA_PASSWORD / QA_CHANNEL 等
+    api:
+      enabled: false                  # api_runner.js：真实 API 批量执行 + 断言
+      plan: project/requirements/api-plan.json
+      config: ""                      # 可选 qa.config.json
+      out: reports/qa-api-results.json
+      allow_write: false              # 写操作需显式授权，且只允许自建数据
+      env: {}                         # REAL_BASE / REAL_PREFIX / PORTAL_TOKEN 等
+    playwright_template: false        # 复制 ui_spec_template.ts 到批次记录
+    copy_references: false            # 复制 excel-columns.md / project-config.md 到批次记录
+    review:
+      enabled: false                  # qa_review.py：产物审核（错误/告警/P0 占比）
+      xlsx: reports/qa-cases.xlsx
+      results: []                     # 可填多个结果 JSON 路径
+      out: reports/qa-review.md
+      strict: false                   # strict=true 时审核不通过返回非 0
 
 # —— Ego 浏览器（UI 用例执行通道）——
 # 两种模式，由 config/workflow.yaml → tests.ui_mode 选择：
@@ -52,6 +77,7 @@ ego_browser:
   cli_path: ego-browser               # 本地 CLI 路径（onboarding 后通常在 ~/.local/bin）
   nodejs_timeout_sec: 30              # 单次 nodejs 调用超时
   skill_guide_cache: records/ego-browser-skill-guide.md
+  learnings_dir: ""                   # 领域工具包目录；留空则自动探测 ego-browser/learnings
   auto_refresh_guide: true            # true=每次执行 ego-browser skill 刷新指南；false=用缓存
   skill_whitelist:                    # 允许 UI DSL `skill <name> <json_args>` 调用的真实能力
     - snapshot
@@ -63,6 +89,23 @@ ego_browser:
     - cdp
     - wait_for
     - handoff
+    - dom_inspect
+    - mouse
+    - keyboard
+    - popup
+    - upload
+    - download
+    - adopt
+    - release
+    - user_page
+    - new_page
+    - pages
+    - tabs
+    - wait_function
+    - reload
+    - clear_state
+    - clear_cookies
+    - claim_space
   cdp_endpoint: http://127.0.0.1:9222 # cdp 模式调试端口（运行时以此为准，workflow.yaml 仅兼容兜底）
   attach_context: first               # cdp 模式：复用哪个上下文（first=保留登录态）
   close_page_after: true              # cdp 模式：只关测试页，不关浏览器

@@ -90,6 +90,44 @@ def _step_lines(action: str, base_url: str, timeout_ms: int) -> list:
         name = re.sub(r"[^A-Za-z0-9_-]+", "-", arg1 or "shot")
         return [f"await page.screenshot({{ path: 'records/' + runId + "
                 f"'/playwright/screenshots/{name}.png', fullPage: true }});"]
+    if verb in ("mouse_click", "mouse_move", "mouse_wheel"):
+        try:
+            x, y = (int(v.strip()) for v in arg1.split(",", 1))
+        except (ValueError, TypeError):
+            return [f"// 坐标格式错误（原步骤: {action}）"]
+        method = {"mouse_click": "click", "mouse_move": "move", "mouse_wheel": "wheel"}[verb]
+        if verb == "mouse_wheel":
+            return [f"await page.mouse.wheel({x}, {y});"]
+        return [f"await page.mouse.{method}({x}, {y});"]
+    if verb in ("key_press", "type_text", "paste", "insert_text"):
+        method = {"key_press": "press", "type_text": "type", "paste": "insertText",
+                  "insert_text": "insertText"}[verb]
+        value = arg1 if verb == "key_press" else " ".join(p for p in (arg1, arg2) if p)
+        return [f"await page.keyboard.{method}({_ts(value)});"]
+    if verb == "reload":
+        return ["await page.reload({ waitUntil: 'domcontentloaded' });"]
+    if verb == "wait_function":
+        expression = " ".join(p for p in (arg1, arg2) if p)
+        return [f"await page.waitForFunction({_ts(expression)}, null, {t});"]
+    if verb == "upload":
+        paths = [str(Path(p.strip()).resolve()) for p in arg2.split("|") if p.strip()]
+        return [f"await page.setInputFiles({_ts(arg1)}, {json.dumps(paths, ensure_ascii=False)});"]
+    if verb == "download":
+        dest = str(Path(arg2).resolve())
+        return [f"const dl = page.waitForEvent('download', {t});",
+                f"await page.click({_ts(arg1)});",
+                "const download = await dl;",
+                f"await download.saveAs({_ts(dest)});"]
+    if verb == "popup":
+        return [f"const pp = page.waitForEvent('popup');",
+                f"await page.click({_ts(arg1)});",
+                "const popup = await pp;",
+                "await popup.waitForLoadState();"]
+    if verb in ("accept_dialog", "dismiss_dialog"):
+        method = "acceptDialog" if verb == "accept_dialog" else "dismissDialog"
+        return [f"await page.{method}({_ts(arg1)});" if arg1 else f"await page.{method}();"]
+    if verb in ("new_page", "adopt", "release", "user_page", "pages", "tabs"):
+        return [f"// 需 TaskSpace 能力（原步骤: {action}）；Playwright 原生仅支持 newPage/context"]
     if verb == "skill":
         return [f"// 注意：skill 动作需 EGO Skill，Playwright 原生不支持（原步骤: {action}）"]
     return [f"// 未识别动作，未执行（原步骤: {action}）"]

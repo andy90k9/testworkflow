@@ -4,3 +4,4 @@ requests>=2.31.0
 pytest>=7.4.0
 playwright>=1.40.0
 PyMySQL>=1.1.0
+openpyxl>=3.1.0        # qa-toolkit 产物生成/审核（gen_cases.py / fill_status.py / qa_review.py）

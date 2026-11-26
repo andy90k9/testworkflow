@@ -2,6 +2,7 @@ mysql.env
 .venv/
 venv/
 records/run-*/
+records/current-run.json
 reports/report-*.md
 __pycache__/
 *.pyc
