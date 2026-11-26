@@ -27,6 +27,12 @@ dsh web --dump-config | grep dsh-workflow
 插件配置：`python`、`workflowDir`、`timeoutSec`。
 兼容范围：`engines.dsh: ^0.2.0-rc.1`，已声明兼容 `0.2.1-alpha.3` 与 `0.2.1-rc.3`。
 
+### 预检与步骤确认
+
+识别到“全链路测试”意图后，插件先执行 `scripts/preflight.py`（只读、不启动浏览器、不写库），
+输出阻塞项、提示项与工作流步骤计划，并通过 `ctx.userQuestions` 弹窗让用户选择 `开始执行 / 取消`。
+存在阻塞项时直接返回，不进入执行阶段；无弹窗服务时需确认后带 `confirmed=true` 调用。
+
 ### 被测系统与 SSO 登录
 
 若调用 `dsh_workflow_run` 时未传 `targetUrl`，插件会通过 DSH 提问弹窗收集：

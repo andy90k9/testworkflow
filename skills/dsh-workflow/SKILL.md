@@ -55,7 +55,8 @@ description: >
 - **EGO 浏览器**：UI 用例通过 CDP 直接跑在用户已打开的会话里（保留登录态），并可调用 Skill 级技能。
 - **MySQL**：过程数据回流，列映射配置适配用户已有表结构（DDL 后续再调）。
 
-触发后优先引导一键流水线；用户要求逐步时，按第 4 节分步执行。
+识别到“全链路测试”意图后，先执行第 2.4 节预检与步骤计划，用户确认后再执行；
+用户要求逐步时，按第 4 节分步执行。
 
 ---
 
@@ -67,6 +68,17 @@ description: >
 3. 检查 Python 依赖：`PyYAML requests pytest playwright`。缺失先安装；`local` 模式另需
    `playwright install chromium`。
 4. 检查 `harness.enabled` 与 `ui_mode`；若为 `ego_skill`，确认 `ego-browser` 命令存在且 usage guide 可刷新。
+
+### 2.4 只读预检与工作流步骤计划（新增）
+
+一旦确认用户要做“全链路测试”，必须先执行只读预检，再生成步骤计划并让用户确认，**确认前不得启动浏览器、登录或写库**。
+
+- 实现：`scripts/preflight.py`，只读输出 `{ ok, blockers, warnings, checks, plan }`。
+- 检查项：需求/代码目录、用例数量、Harness 接入、EGO CLI 与指南、Python 依赖、UI 模式、MySQL env 与列映射。
+- 步骤计划：准备目标系统 → 生成三类用例 → 格式校验 → 执行 API/UI → 生成报告 → MySQL 回流。
+- 用户确认：通过 `ctx.userQuestions.ask()` 展示计划并提供 `开始执行 / 取消`；
+  没有弹窗服务时返回计划并要求带 `confirmed=true` 重新调用。
+- 阻塞项处理：存在 blocker 时直接返回，不进入任何执行阶段。
 
 ### 2.5 被测系统链接与 SSO 登录（新增）
 

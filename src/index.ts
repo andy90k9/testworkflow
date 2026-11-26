@@ -28,6 +28,7 @@ const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 type Args = Record<string, any>
 type Target = { url: string; user: string; password: string }
+type Preflight = Record<string, any>
 
 function redact(text: unknown, secret: string): string {
   const value = String(text || '')
@@ -44,6 +45,74 @@ function lastJson(stdout: unknown): Record<string, any> | null {
     }
   }
   return null
+}
+
+function formatPlan(preflight: Preflight): string {
+  const checks = preflight?.checks || {}
+  const lines: string[] = []
+  lines.push('预置条件：')
+  lines.push(`- 需求文件：${checks.requirements?.files ?? 0} 个`)
+  lines.push(`- 代码文件：${checks.source?.files ?? 0} 个`)
+  lines.push(`- Harness：${checks.harness?.enabled ? '已接入' : '未接入'}`)
+  lines.push(`- EGO CLI：${checks.ego?.available ? checks.ego.cli_path : '不可用'}`)
+  lines.push(`- UI 模式：${checks.ui_mode || '-'}`)
+  lines.push(`- MySQL：${checks.database?.enabled ? '启用' : '未启用'}`)
+  if ((preflight?.blockers || []).length) {
+    lines.push('阻塞项：')
+    for (const b of preflight.blockers) lines.push(`- ${b}`)
+  }
+  if ((preflight?.warnings || []).length) {
+    lines.push('提示：')
+    for (const w of preflight.warnings) lines.push(`- ${w}`)
+  }
+  lines.push('工作流步骤：')
+  for (const [idx, step] of (preflight?.plan || []).entries()) {
+    lines.push(`${idx + 1}. [${step.status}] ${step.title} — ${step.detail}`)
+  }
+  return lines.join('\n')
+}
+
+async function runPreflight(config: Config, workflowDir: string, only: string, skipGen: boolean, targetUrl: unknown): Promise<Preflight> {
+  const script = path.join(workflowDir, 'scripts', 'preflight.py')
+  try {
+    const { stdout } = await execFileAsync(config.python || 'python3', [script], {
+      cwd: workflowDir,
+      timeout: 60000,
+      maxBuffer: 4 * 1024 * 1024,
+      env: {
+        ...process.env,
+        DSH_ONLY: only,
+        DSH_SKIP_GEN: String(Boolean(skipGen)),
+        DSH_TARGET_URL: String(targetUrl || ''),
+      },
+    })
+    return lastJson(stdout) || { ok: false, blockers: ['预检脚本未返回有效 JSON'], warnings: [], plan: [] }
+  } catch (error: any) {
+    const e = error || {}
+    return {
+      ok: false,
+      blockers: [redact(e.stderr || e.message || '预检执行失败', '')],
+      warnings: [],
+      plan: [],
+    }
+  }
+}
+
+async function confirmPlan(ctx: any, planText: string) {
+  if (!ctx.userQuestions || typeof ctx.userQuestions.ask !== 'function') return { unavailable: true }
+  const answer = await ctx.userQuestions.ask({
+    questions: [{
+      id: 'confirmPlan',
+      question: '预检完成，是否按以下工作流步骤开始执行？',
+      detail: planText,
+      header: 'DSH 工作流计划',
+      options: [{ label: '开始执行' }, { label: '取消' }],
+    }],
+  })
+  const item = (answer?.answers || [])[0] || {}
+  const choice = String(item.custom || (item.selected || [])[0] || '')
+  if (choice !== '开始执行') return { cancelled: true }
+  return { confirmed: true }
 }
 
 async function askTarget(ctx: any, args: Args): Promise<Target | { cancelled: true } | { unavailable: true }> {
@@ -129,7 +198,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(
     defineTool({
       name: 'dsh_workflow_run',
-      description: '运行 DSH 测试工作流。若未提供被测系统链接，会弹窗收集链接/SSO账号/密码并确认，然后启动 EGO、尽力登录并执行全流程。',
+      description: '运行 DSH 测试工作流。先只读预检并展示步骤计划，用户确认后才收集凭证、启动 EGO 并执行。',
       parameters: {
         only: { type: 'string', description: '只执行 api / ui / all，默认 all。' },
         skipGen: { type: 'boolean', description: '跳过 Harness 生成阶段。' },
@@ -139,6 +208,7 @@ export function apply(ctx: Context, config: Config): void {
         targetUrl: { type: 'string', description: '被测系统链接；不传则弹窗询问。' },
         ssoUser: { type: 'string', description: 'SSO 账号；不传则弹窗询问。' },
         autoLogin: { type: 'boolean', description: '是否尝试自动登录，默认 true。' },
+        confirmed: { type: 'boolean', description: '用户已确认工作流计划，可跳过计划确认弹窗。' },
       },
       output: {
         schema: { type: 'string' },
@@ -149,6 +219,36 @@ export function apply(ctx: Context, config: Config): void {
         const only = String(args.only || 'all')
         if (!['api', 'ui', 'all'].includes(only)) {
           throw new Error('only 必须是 api / ui / all 之一')
+        }
+
+        const skipGen = Boolean(args.skipGen)
+        const preflight = await runPreflight(config, workflowDir, only, skipGen, args.targetUrl)
+        const planText = formatPlan(preflight)
+
+        if (!preflight.ok) {
+          return JSON.stringify({
+            ok: false,
+            stage: 'preflight',
+            blockers: preflight.blockers || [],
+            warnings: preflight.warnings || [],
+            plan: preflight.plan || [],
+            message: '预置条件未满足，未启动浏览器或未执行任何写操作。请修复阻塞项后重试。',
+          })
+        }
+
+        if (!args.confirmed) {
+          const confirmed = await confirmPlan(ctx as any, planText)
+          if (confirmed.cancelled) {
+            return JSON.stringify({ ok: false, cancelled: true, message: '用户取消，未启动 EGO' })
+          }
+          if (confirmed.unavailable) {
+            return JSON.stringify({
+              ok: false,
+              needsUserInput: true,
+              plan: preflight.plan || [],
+              message: '当前会话没有可用提问弹窗服务。请确认上述步骤后，带 confirmed=true 重新调用本工具。',
+            })
+          }
         }
 
         const asked = await askTarget(ctx as any, args)
@@ -198,6 +298,7 @@ export function apply(ctx: Context, config: Config): void {
           const runId = (stdout.match(/run_id = (run-[^\s]+)/) || [])[1] || ''
           return JSON.stringify({
             ok: true,
+            plan: preflight.plan || [],
             prepared: { url: asked.url, autoLogin: prep.data.autoLogin || 'ok' },
             exitCode: 0,
             runId,
