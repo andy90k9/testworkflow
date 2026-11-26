@@ -27,6 +27,19 @@ dsh web --dump-config | grep dsh-workflow
 插件配置：`python`、`workflowDir`、`timeoutSec`。
 兼容范围：`engines.dsh: ^0.2.0-rc.1`，已声明兼容 `0.2.1-alpha.3` 与 `0.2.1-rc.3`。
 
+### 被测系统与 SSO 登录
+
+若调用 `dsh_workflow_run` 时未传 `targetUrl`，插件会通过 DSH 提问弹窗收集：
+
+- 被测系统链接（必须 `http://` / `https://`）
+- SSO 账号
+- SSO 密码
+- 确认项：`确认并启动` / `取消`
+
+确认后插件会启动 EGO（macOS：`open -a "ego lite"`）、打开链接并尝试自动登录。
+若无法自动登录，会保留浏览器会话并调用 `task.handOff()`，提示你在 EGO 中手动登录后再重试。
+密码仅通过进程环境变量一次性传递，不写配置、用例、报告或数据库，且返回文本中会被脱敏。
+
 ## 架构总览
 
 ```mermaid

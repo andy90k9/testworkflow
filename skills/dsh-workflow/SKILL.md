@@ -20,6 +20,8 @@ description: >
 > ```
 >
 > 安装后插件注册工具 `dsh_workflow_run`，可直接触发一键流水线；Skill 负责对话式编排说明。
+> 若未提供被测系统链接，工具会通过 DSH `ctx.userQuestions` 弹窗收集链接、SSO 账号与密码并确认，
+> 再启动 EGO、尽力登录；无法自动登录时通过 `task.handOff()` 把浏览器交还用户手动登录。
 
 | 项目 | 内容 |
 | --- | --- |
@@ -65,6 +67,27 @@ description: >
 3. 检查 Python 依赖：`PyYAML requests pytest playwright`。缺失先安装；`local` 模式另需
    `playwright install chromium`。
 4. 检查 `harness.enabled` 与 `ui_mode`；若为 `ego_skill`，确认 `ego-browser` 命令存在且 usage guide 可刷新。
+
+### 2.5 被测系统链接与 SSO 登录（新增）
+
+当对话中没有提供被测系统链接时，不得臆造地址。插件工具 `dsh_workflow_run` 会：
+
+1. 通过 `ctx.userQuestions.ask()` 弹出表单，依次收集：
+   - `被测系统链接`（必须 `http://` 或 `https://`）
+   - `SSO 账号`
+   - `SSO 密码`
+   - 确认项：`确认并启动` / `取消`
+2. 用户确认后调用 `scripts/prepare_target.py`：
+   - macOS 下若 EGO 未运行，执行 `open -a "ego lite"` 启动；
+   - 等待 `ego-browser` 命令可用；
+   - 用 `ego-browser nodejs` 打开被测链接并探查登录表单；
+   - 若存在密码输入框，尽力填入账号/密码并提交；
+   - 若自动登录成功，关闭本次 TaskSpace 并继续流水线；
+   - 若无法自动登录，保存截图并调用 `task.handOff()`，提示用户在 EGO 浏览器中手动登录后再重试。
+3. 安全约束：
+   - 密码只通过进程环境变量一次性传递，不写配置、用例、报告、记录或 MySQL；
+   - 工具返回文本中所有出现的密码都会被替换为 `***`；
+   - 用户取消或没有提问弹窗服务时，不启动浏览器，返回明确提示。
 
 ---
 

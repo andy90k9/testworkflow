@@ -7,3 +7,4 @@
         python: python3
         workflowDir: ""
         timeoutSec: 3600
+        autoLogin: true
