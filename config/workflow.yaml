@@ -45,7 +45,7 @@ providers_file: config/providers.yaml      # 外部 Provider 接入配置（Harn
 
 # —— MySQL 回流（按你已有库表写入）——
 db:
-  enabled: false                           # 配好 mysql.env 和表映射后改为 true
+  enabled: true                            # 配好 mysql.env 和表映射后改为 true
   env_file: config/mysql.env               # 真实连接信息放这里（不入库、不上传）
   tables:
     case_table: dsh_test_cases             # 用例登记表
