@@ -156,9 +156,9 @@ def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
         lines.append(f"report.assert_detail.push({{ name: 'expect_url_contains', expected: {_js(arg1)}, actual: u{idx}, passed: true }});")
         step_ok("assert")
     elif verb == "expect_text":
-        lines.append("const snap = await page.snapshot({ scope: 'full_page' });")
-        lines.append(f"if (!snap.includes({_js(arg2)})) {{ throw new Error({_js(f'期望页面包含文本 {arg2}')}); }}")
-        lines.append(f"report.assert_detail.push({{ name: 'expect_text', expected: {_js(arg2)}, actual: snap.slice(0, 500), passed: true }});")
+        lines.append(f"const snap{idx} = await page.snapshot({{ scope: 'full_page' }});")
+        lines.append(f"if (!snap{idx}.includes({_js(arg2)})) {{ throw new Error({_js(f'期望页面包含文本 {arg2}')}); }}")
+        lines.append(f"report.assert_detail.push({{ name: 'expect_text', expected: {_js(arg2)}, actual: snap{idx}.slice(0, 500), passed: true }});")
         step_ok("assert")
     elif verb == "expect_visible":
         lines.append(f"await page.waitForSelector({_js(arg1)}, {{ state: 'visible', timeout: {timeout_ms} }});")

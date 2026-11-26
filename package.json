@@ -1,6 +1,6 @@
 {
   "name": "dsh-workflow",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "DeepSeek Harness 测试工作流插件：生成/执行功能、API、UI 用例并回流 MySQL",
   "type": "module",
   "main": "lib/index.js",
