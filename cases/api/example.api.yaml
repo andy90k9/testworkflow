@@ -1,0 +1,40 @@
+# API 用例示例 —— 数据驱动执行器会直接读取并执行
+- case_id: API-001
+  run_id: run-example
+  title: 登录接口-正确凭证返回成功
+  module: auth
+  priority: P1
+  related_req: REQ-001
+  related_func: FUNC-001
+  request:
+    method: POST
+    path: /api/login
+    headers:
+      Content-Type: application/json
+    body:
+      username: demo
+      password: "123456"
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+
+- case_id: API-002
+  run_id: run-example
+  title: 登录接口-密码错误返回失败码
+  module: auth
+  priority: P1
+  related_req: REQ-001
+  related_func: FUNC-002
+  request:
+    method: POST
+    path: /api/login
+    headers:
+      Content-Type: application/json
+    body:
+      username: demo
+      password: wrong-pass
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 1001

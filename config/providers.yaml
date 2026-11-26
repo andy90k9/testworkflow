@@ -1,0 +1,52 @@
+# ============================================================
+# DSH 外部 Provider 接入配置（预留入口，按需填入）
+# ============================================================
+
+# —— DeepSeek Harness（用例生成引擎）——
+# 对接你已有的 harness 项目。两种接入形态二选一：
+#   mode: command  -> 本地命令行调用，command 里可用占位符：
+#                     {requirements} 需求目录 / {source} 代码目录 / {output} 产物输出目录
+#                     {run_id} 当前批次ID（流水线统一生成）
+#   mode: http     -> HTTP 服务调用，POST {run_id, requirements_dir, source_dir, output_dir}
+#                     到 http_endpoint，harness 返回后把产物写到 output_dir
+# 输出产物约定（与 DSH 用例目录结构对齐，跑完自动做格式校验）：
+#   {output_dir}/functional/*.yaml   功能用例
+#   {output_dir}/api/*.yaml          API 用例
+#   {output_dir}/ui/*.yaml           UI 用例
+harness:
+  enabled: false                      # 填好接入信息后改 true
+  mode: command                       # command | http
+  command: ""                         # 例: python3 /path/to/harness/run.py --req {requirements} --src {source} --out {output} --run-id {run_id}
+  http_endpoint: ""                   # 例: http://127.0.0.1:9000/generate
+  http_method: POST
+  http_headers: {}                    # 例: {Authorization: "Bearer xxx"}
+  timeout_sec: 600
+  output_dir: records/harness-output  # harness 产物落点，适配层会自动分发到 cases/
+
+# —— Ego 浏览器（UI 用例执行通道）——
+# 两种模式，由 config/workflow.yaml → tests.ui_mode 选择：
+#   cdp       : Playwright connect_over_cdp，接管已打开浏览器会话
+#   ego_skill : 通过本地 CLI `ego-browser nodejs` 执行 JS 片段驱动 ego lite
+#               （ego-browser skill 需单独安装：npx skills add citrolabs/ego-lite）
+ego_browser:
+  cli_path: ego-browser               # 本地 CLI 路径（onboarding 后通常在 ~/.local/bin）
+  nodejs_timeout_sec: 30              # 单次 nodejs 调用超时
+  skill_guide_cache: records/ego-browser-skill-guide.md
+  auto_refresh_guide: true            # true=每次执行 ego-browser skill 刷新指南；false=用缓存
+  skill_whitelist:                    # 允许 UI DSL `skill <name> <json_args>` 调用的真实能力
+    - snapshot
+    - capture
+    - screenshot
+    - evaluate
+    - extract
+    - fetch
+    - cdp
+    - wait_for
+    - handoff
+  cdp_endpoint: http://127.0.0.1:9222 # cdp 模式调试端口（运行时以此为准，workflow.yaml 仅兼容兜底）
+  attach_context: first               # cdp 模式：复用哪个上下文（first=保留登录态）
+  close_page_after: true              # cdp 模式：只关测试页，不关浏览器
+
+# —— MySQL 回流 ——（已在 config/workflow.yaml 的 db 段配置，此处仅提示）
+# 连接信息: config/mysql.env        表结构/列映射: config/workflow.yaml -> db.columns
+# 当前状态: 预留入口已就绪，等你的 DDL 后只改映射配置，无需改代码

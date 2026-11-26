@@ -1,0 +1,57 @@
+# ============================================================
+# DSH 测试工作流总配置
+# 所有相对路径均相对于本工作流根目录（dsh-workflow/）
+# ============================================================
+
+workflow:
+  name: dsh
+  version: "1.1.0"
+
+# —— 前置输入：被测项目区 ——
+project:
+  requirements_dir: project/requirements   # 需求文档（md/docx/pdf）
+  source_dir: project/src                  # 被测代码目录
+
+# —— 用例产出区 ——
+cases:
+  functional_dir: cases/functional         # 功能用例（YAML）
+  api_dir: cases/api                       # API 用例（YAML，可直接驱动 pytest）
+  ui_dir: cases/ui                         # UI 用例（YAML，可直接驱动 Playwright）
+
+# —— 可执行测试 ——
+tests:
+  api_dir: tests/api
+  ui_dir: tests/ui
+  api_base_url: http://localhost:8000      # 被测服务接口地址（按需修改）
+  ui_base_url: http://localhost:3000       # 被测前端地址（按需修改）
+  api_timeout: 15                          # 接口超时（秒）
+  ui_timeout: 10                           # UI 操作超时（秒）
+  ui_mode: cdp                             # local=独立 Playwright | cdp=接管已打开浏览器 | ego_skill=EGO CLI+JS
+  ui_cdp_endpoint: http://127.0.0.1:9222   # 兼容旧配置；优先取 providers.yaml → ego_browser.cdp_endpoint
+  ui_headless: true                        # local 模式无头开关（cdp 模式不适用）
+
+# —— 执行策略 ——
+execute:
+  fail_fast: false                         # 单条失败是否立即终止流水线
+  retry_count: 1                           # Harness 生成失败重试次数
+  timeout_sec: 30                          # 单条用例执行超时（秒）
+  cleanup_cases_before_gen: true           # 生成前清理旧用例（保留 example.*.yaml）
+  harness_failure_policy: abort            # abort=生成失败即中止 | continue=继续用已有用例
+
+# —— 过程数据 ——
+records_dir: records                       # 执行记录：records/<run_id>/
+reports_dir: reports                       # 测试报告：reports/report-<run_id>.md/.json/.html
+providers_file: config/providers.yaml      # 外部 Provider 接入配置（Harness / EGO）
+
+# —— MySQL 回流（按你已有库表写入）——
+db:
+  enabled: false                           # 配好 mysql.env 和表映射后改为 true
+  env_file: config/mysql.env               # 真实连接信息放这里（不入库、不上传）
+  tables:
+    case_table: dsh_test_cases             # 用例登记表
+    run_table: dsh_test_runs               # 执行批次表
+    case_result_table: dsh_case_results    # 单用例执行结果表
+    report_table: dsh_test_reports         # 报告摘要表
+  # 列映射：dsh 字段 -> 你的表列名。拿到你的 DDL 后按需修改即可，
+  # 不需要改脚本代码。缺省值见 scripts/db_sync.py 内 DEFAULT_COLUMN_MAP。
+  columns: {}

@@ -1,0 +1,9 @@
+mysql.env
+records/run-*/
+reports/report-*.md
+__pycache__/
+*.pyc
+.pytest_cache/
+playwright-report/
+test-results/
+node_modules/

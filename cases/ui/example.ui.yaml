@@ -1,0 +1,18 @@
+# UI 用例示例 —— 步骤 DSL 由 Playwright 数据驱动执行器翻译执行
+- case_id: UI-001
+  run_id: run-example
+  title: 登录页-正确凭证登录跳转首页
+  module: auth
+  priority: P1
+  browser: chromium
+  related_req: REQ-001
+  related_func: FUNC-001
+  steps:
+    - action: "goto /login"
+    - action: "fill #username demo"
+    - action: "fill #password 123456"
+    - action: "click button[type=submit]"
+    - action: "expect_url_contains /home"
+    - action: "expect_visible .user-name"
+    # 需要浏览器专有能力时启用（需 ui_mode: ego_skill 且安装 ego-browser skill）
+    # - action: "skill snapshot {\"scope\": \"full_page\"}"
