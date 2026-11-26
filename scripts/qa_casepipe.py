@@ -393,6 +393,38 @@ def _sheet_names(xlsx: Path) -> list:
         return []
 
 
+def _ensure_scenario_headers(xlsx: Path, sheet_name: str) -> dict:
+    """给场景层工作表补「执行状态」「实际结果」表头。
+
+    不同版本的 qa-case-pipeline scripts/fill_status.py 行为不一致：
+    新版会自己补表头，旧版只写数据不留表头，导致 Excel 里出现两列无名数据、
+    COUNTIF 统计与筛选失效。这里在回填前统一补齐，与外部脚本版本无关。
+    """
+    try:
+        from openpyxl import load_workbook
+        from openpyxl.styles import Font
+    except ImportError:
+        return {"ok": False, "error": "缺少 openpyxl"}
+    try:
+        wb = load_workbook(xlsx)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": f"打开 Excel 失败: {exc}"}
+    if sheet_name not in wb.sheetnames:
+        return {"ok": False, "error": f"工作表不存在: {sheet_name}"}
+    ws = wb[sheet_name]
+    field_index = {ws.cell(row=1, column=c).value: c for c in range(1, ws.max_column + 1)}
+    added: list[str] = []
+    for col, title in ((field_index.get("执行状态") or 8, "执行状态"),
+                       (field_index.get("实际结果") or 9, "实际结果")):
+        if ws.cell(row=1, column=col).value is None:
+            cell = ws.cell(row=1, column=col, value=title)
+            cell.font = Font(color="FFFFFF", bold=True)
+            added.append(title)
+    if added:
+        wb.save(xlsx)
+    return {"ok": True, "added": added}
+
+
 def fill_back(xlsx: Path, details: list, run_dir: Path, env: str = "",
               sheets: dict | None = None) -> dict:
     """把执行明细回填进 qa-toolkit 的 Excel（接口层 + UI 层 + 场景层聚合）。
@@ -423,10 +455,12 @@ def fill_back(xlsx: Path, details: list, run_dir: Path, env: str = "",
     else:
         names = []
 
-    # ① UI 层先回填（不带场景聚合）
+    # ① 场景层表头先补齐（兼容旧版 fill_status.py）
+    out["headers"] = _ensure_scenario_headers(xlsx, scenario_sheet)
+    # ② UI 层先回填（不带场景聚合）
     if not names or ui_sheet in names:
         out["steps"].append(fill_status(xlsx, results_path, ui_sheet, env=env))
-    # ② 接口层回填 + 场景层聚合
+    # ③ 接口层回填 + 场景层聚合
     if not names or api_sheet in names:
         out["steps"].append(fill_status(xlsx, results_path, api_sheet, scenario_sheet, env=env))
     elif out["steps"]:
