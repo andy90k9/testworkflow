@@ -12,6 +12,7 @@
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -30,6 +31,13 @@ RUNTIME_KEYS = (
 )
 
 
+def _normalize_case_id(name: str) -> str:
+    """pytest parametrize 的 junit name 形如 test_api_case[API-AUTH-001]，取真实用例 ID。"""
+    text = str(name or "")
+    m = re.search(r"\[(.+)\]$", text)
+    return m.group(1) if m else text
+
+
 def _parse_junit(xml_path: Path):
     """解析 pytest junitxml -> (统计 dict, 用例明细 list)。"""
     details = []
@@ -45,7 +53,7 @@ def _parse_junit(xml_path: Path):
             pass
         for tc in suite.iter("testcase"):
             item = {
-                "case_id": tc.get("name", ""),
+                "case_id": _normalize_case_id(tc.get("name", "")),
                 "classname": tc.get("classname", ""),
                 "time": tc.get("time", "0"),
                 "status": "passed",

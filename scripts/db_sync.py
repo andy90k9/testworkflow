@@ -158,9 +158,10 @@ def _sql_datetime(value) -> str:
     return _now()
 
 
-def _json_text(value) -> str:
+def _json_text(value):
+    """空值返回 None，避免把空串写入 MySQL JSON 列被拒绝。"""
     if value in (None, "", [], {}):
-        return ""
+        return None
     return json.dumps(value, ensure_ascii=False)
 
 
@@ -225,7 +226,7 @@ def build_case_rows(cfg, paths, run_id: str) -> list:
                     "related_req": item.get("related_req"),
                     "related_func": item.get("related_func"),
                     "steps_json": _json_text(item.get("steps") or []),
-                    "request_json": _json_text(item.get("request") or {}) if ctype == "api" else "",
+                    "request_json": _json_text(item.get("request") or {}) if ctype == "api" else None,
                     "assert_json": _json_text(item.get("expect") or item.get("assert_rule") or {}),
                     "created_at": _now(),
                 })
