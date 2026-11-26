@@ -185,6 +185,7 @@ flowchart LR
 | `api-pytest.log` / `ui-pytest.log` | 执行日志 |
 | `api-detail.json` / `ui-detail.json` | 用例级明细：状态、耗时、错误、请求/响应、断言、截图路径 |
 | `summary.json` | 汇总统计 + `run_id` + 配置快照 |
+| `playwright/` | Playwright 定位脚本产物（`*.e2e.ts` + `index.ts` + `playwright.config.ts` + `manifest.json`） |
 | `bugs.json` | 本批次缺陷快照（发现/复现 + 仍未关闭的缺陷） |
 | `records/bugs.json` | 缺陷台账主表（跨批次累积，含要素、状态、流转留痕） |
 | `records/latest.json` | 最近批次指针 |
@@ -198,6 +199,8 @@ flowchart LR
   JSON 的 `qa_pipeline` 字段（场景级结论与回填结果）。
 - 有缺陷时追加「缺陷清单（过程发现）」章节：状态/级别统计 + 明细表 +
   每条缺陷的基本要素与流转轨迹；JSON 同步带 `bugs` 与 `bug_stats` 字段。
+- 有 Playwright 脚本产物时追加「Playwright 定位脚本产物」章节（模块/脚本/用例数/SHA1）；
+  JSON 同步带 `playwright_scripts` 字段。
 
 ### 4.8 用例集状态回填与场景层聚合（qa_casepipe.enabled: true）
 
@@ -252,6 +255,23 @@ python3 scripts/bug_tracker.py status --bug-id BUG-xxx --to confirmed --by 张�
 python3 scripts/bug_tracker.py assign --bug-id BUG-xxx --assignee 李四
 python3 scripts/bug_tracker.py sync --run <run_id>
 ```
+
+### 4.10 Playwright 定位脚本产物
+
+UI 自动化不只产出执行明细，还会**从同一份 `cases/ui/*.yaml` DSL 生成 Playwright
+定位脚本**（`scripts/gen_playwright.py`），与 Harness 侧 `e2e_gen_playwright` 产物形态一致。
+
+- `run_tests.py` 每次执行后自动生成；也可单独调用 `gen_playwright.py --run <run_id>`
+- `--import <dir>` 可导入已有的生成脚本（如 Harness 产出的 `e2e/playwright-dsh/`），
+  manifest 中标记 `script_mode: imported`
+- DSL → TS：`goto` / `wait` / `click` / `fill` / `press` / `check` / `select` / `hover` /
+  `expect_url_contains` / `expect_text` / `expect_visible` / `screenshot` 全部逐条翻译并保留步骤注释；
+  `skill` 动作显式注释「Playwright 原生不支持」，绝不静默跳过
+- 按 `case_id` 前两段分组：`UI-NAV-001` → `UI-NAV` → `ui-nav.e2e.ts`
+- 产物落点：`records/<run_id>/playwright/`；报告列脚本清单；
+  MySQL 复用 `dsh_test_cases.ext_json` 写 `script_path` / `script_sha1` /
+  `script_generator` / `script_generated_at` / `script_mode`，无需改表结构
+- 配置：`workflow.yaml → playwright.enabled / inject_auth / storage`
 
 ---
 
@@ -737,9 +757,9 @@ dsh-workflow/
 ├─ project/               # requirements/ 与 src/（前置输入）
 ├─ cases/                 # functional/ api/ ui/ 三类用例 YAML
 ├─ tests/                 # api/ 与 ui/ 数据驱动执行器
-├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe / bug_tracker
+├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe / bug_tracker / gen_playwright
 ├─ skill/dsh-workflow/    # 对话式编排 Skill（本文件评审通过后替换此目录下的 SKILL.md）
-├─ records/               # current-run.json / run-<run_id>/ / screenshots/
+├─ records/               # current-run.json / run-<run_id>/（含 playwright/ 脚本产物）/ screenshots/
 ├─ reports/               # report-<run_id>.md / .json / .html + qa-cases.md / .xlsx
 └─ requirements.txt
 ```
@@ -757,6 +777,8 @@ dsh-workflow/
 | 单步报告 | `python3 scripts/make_report.py --run <run_id>`（含场景层聚合与 Excel 回填） |
 | 单步入库 | `python3 scripts/db_sync.py --dry-run` / `--suggest-ddl` |
 | 缺陷台账 | `python3 scripts/bug_tracker.py list\|show\|stats\|status\|assign\|add\|sync` |
+| 生成 Playwright 脚本 | `python3 scripts/gen_playwright.py [--run <run_id>] [--dry-run]` |
+| 导入已有脚本 | `python3 scripts/gen_playwright.py --import <dir> --run <run_id>` |
 
 ---
 

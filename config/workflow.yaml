@@ -31,6 +31,15 @@ tests:
   ui_cdp_endpoint: http://127.0.0.1:9222   # 兼容旧配置；优先取 providers.yaml → ego_browser.cdp_endpoint
   ui_headless: true                        # local 模式无头开关（cdp 模式不适用）
 
+# —— Playwright 定位脚本产物（由 cases/ui/*.yaml 的 DSL 生成）——
+playwright:
+  enabled: true                            # 每次执行后生成 *.e2e.ts，纳入 records 批次产物
+  inject_auth: true                        # 生成时注入 sessionStorage 登录态
+  storage:                                 # 注入到 sessionStorage 的键值对
+    access_token: e2e-playwright-token
+    user_name: e2e
+    user_id: '1'
+
 # —— 执行策略 ——
 execute:
   fail_fast: false                         # 单条失败是否立即终止流水线

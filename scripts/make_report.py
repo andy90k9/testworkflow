@@ -64,6 +64,29 @@ def _functional_section(items: list) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _playwright_section(manifest: dict) -> str:
+    """Playwright 定位脚本产物章节。"""
+    if not manifest or manifest.get("mode") == "disabled":
+        return ""
+    files = manifest.get("files") or []
+    if not files:
+        return ""
+    lines = [
+        f"本批次由 `cases/ui/*.yaml` 的 DSL 生成 **{manifest.get('total_cases', 0)}** 条用例的 "
+        f"Playwright 定位脚本，共 **{len(files)}** 个文件。"
+        f"（生成器：{manifest.get('generator')}，来源：{manifest.get('source')}）",
+        "",
+        "| 模块 | 脚本 | 用例数 | SHA1 |",
+        "| --- | --- | --- | --- |",
+    ]
+    for row in manifest.get("features") or []:
+        lines.append(f"| {row.get('feature') or '-'} | `{row.get('file')}` "
+                     f"| {len(row.get('case_ids') or [])} | {row.get('sha1') or '-'} |")
+    lines.extend(["", "配套文件：`index.ts`（脚本入口）、`playwright.config.ts`（运行配置）、"
+                      "`playwright-manifest.json`（产物清单）。", ""])
+    return "\n".join(lines)
+
+
 def _trail_label(item: dict) -> str:
     """流转记录的展示文案：区分「创建」「状态流转」「属性调整」。"""
     from bug_tracker import STATUS_CN as BUG_STATUS_CN
@@ -259,6 +282,14 @@ def main():
         except Exception:  # noqa: BLE001
             bugs = []
 
+    pw_manifest = {}
+    pw_path = run_dir / "playwright" / "playwright-manifest.json"
+    if pw_path.exists():
+        try:
+            pw_manifest = read_json(pw_path) or {}
+        except Exception:  # noqa: BLE001
+            pw_manifest = {}
+
     providers = load_providers()
     env = str(summary.get("config", {}).get("api_base_url") or "")
     casepipe = _casepipe_data(providers, details, run_dir, env)
@@ -292,7 +323,7 @@ def main():
         casepipe_section = _casepipe_section(casepipe.get("scenarios") or [],
                                              casepipe.get("scenario_stats") or {})
 
-    numerals = ("三", "四", "五", "六", "七")
+    numerals = ("三", "四", "五", "六", "七", "八")
     extra_sections = []
     functional_section = _functional_section(details)
     if functional_section:
@@ -300,6 +331,9 @@ def main():
     bug_section_text = _bug_section(bugs)
     if bug_section_text:
         extra_sections.append(("缺陷清单（过程发现）", bug_section_text))
+    pw_section = _playwright_section(pw_manifest)
+    if pw_section:
+        extra_sections.append(("Playwright 定位脚本产物", pw_section))
     if casepipe_section:
         extra_sections.append(("场景层状态统计（qa-case-pipeline）", casepipe_section))
     index = 0
@@ -337,6 +371,7 @@ def main():
         "functional_list": [it for it in details if it.get("suite") == "functional"],
         "bugs": bugs,
         "bug_stats": (__import__("bug_tracker").stats(bugs) if bugs else {}),
+        "playwright_scripts": pw_manifest,
         "module_distribution": {},
         "qa_pipeline": casepipe,
     }

@@ -38,7 +38,7 @@ DEFAULT_COLUMN_MAP = {
         "title": "title", "module": "module", "priority": "priority",
         "precondition": "precondition", "related_req": "related_req", "related_func": "related_func",
         "steps_json": "steps_json", "request_json": "request_json", "assert_json": "assert_json",
-        "created_at": "created_at",
+        "created_at": "created_at", "ext_json": "ext_json",
     },
     "run_table": {
         "run_id": "run_id", "run_name": "run_name", "demand_hash": "demand_hash",
@@ -252,7 +252,26 @@ def parse_yaml_case(path: Path):
 
 def build_case_rows(cfg, paths, run_id: str) -> list:
     rows = []
-    from dsh_common import collect_yaml_files
+    from dsh_common import collect_yaml_files, resolve_run_dir
+
+    # Playwright 脚本产物索引：case_id -> 脚本路径 / 指纹 / 生成器
+    script_index = {}
+    pw_path = resolve_run_dir(Path(paths["records"]), run_id) / "playwright" / "playwright-manifest.json"
+    if pw_path.exists():
+        try:
+            pw = read_json(pw_path) or {}
+            for feature in pw.get("features") or []:
+                for case_id in feature.get("case_ids") or []:
+                    script_index[case_id] = {
+                        "script_path": feature.get("file"),
+                        "script_sha1": feature.get("sha1"),
+                        "script_generator": pw.get("generator"),
+                        "script_generated_at": pw.get("generated_at"),
+                        "script_mode": pw.get("mode"),
+                    }
+        except Exception:  # noqa: BLE001
+            pass
+
     for key, ctype in (("functional", "functional"), ("api_cases", "api"), ("ui_cases", "ui")):
         for path in collect_yaml_files(paths[key]):
             if path.name.startswith("example."):
@@ -274,6 +293,7 @@ def build_case_rows(cfg, paths, run_id: str) -> list:
                     "request_json": _json_text(item.get("request") or {}) if ctype == "api" else None,
                     "assert_json": _json_text(item.get("expect") or item.get("assert_rule") or {}),
                     "created_at": _now(),
+                    "ext_json": _json_text(script_index.get(item.get("case_id")) or {}),
                 })
     return rows
 

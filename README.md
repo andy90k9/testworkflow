@@ -105,6 +105,7 @@ dsh-workflow/
 │   ├── api/test_api_cases.py   # 读 cases/api/*.yaml 参数化执行
 │   └── ui/test_ui_cases.py     # Playwright / ego_skill 双模式 UI 执行器
 ├── records/<run_id>/         # ④⑤ 执行记录（junitxml/日志/summary/明细/runtime/bugs 快照）
+│   └── playwright/           # Playwright 定位脚本产物（*.e2e.ts + index + config + manifest）
 ├── records/bugs.json         # 缺陷台账主表（跨批次累积，含状态与流转留痕）
 ├── reports/report-<run_id>.md / .json # ⑥ 测试报告
 ├── reports/qa-cases.md / .xlsx        # qa-toolkit 三层用例集（生成 + 状态回填）
@@ -117,6 +118,7 @@ dsh-workflow/
 │   ├── case_aggregate.py    # 用例关联索引 + 功能（场景层）状态派生
 │   ├── import_external_results.py  # 外部执行结果导入器（把别的通道结果接进本账本）
 │   ├── bug_tracker.py       # 缺陷台账（要素模型 + 状态机 + 同根因归并 + 流转留痕）
+│   ├── gen_playwright.py    # Playwright 定位脚本产物（DSL 生成 + 外部脚本导入）
 │   └── db_sync.py           # MySQL 回流（列映射适配你已有表）
 └── skill/dsh-workflow/      # Loomy Skill 编排层
 ```
@@ -304,6 +306,53 @@ python3 scripts/import_external_results.py \
   并同步更新 `summary.overall`；
 - 本批次已执行过的用例不会被重复计数（仅当外部结果更差时才覆盖）。
 
+## Playwright 定位脚本产物
+
+UI 自动化不再只有「执行明细」——每次执行都会**从同一份 `cases/ui/*.yaml` DSL 生成
+Playwright 定位脚本**，与 Harness 侧 `e2e_gen_playwright` 的产物形态一致，并纳入批次账本。
+
+### 1. 生成与导入
+
+```bash
+# 执行流水线时自动生成（无需单独调用，run_tests.py 已接入）
+python3 scripts/run_pipeline.py --skip-gen
+
+# 单独生成 / 预览
+python3 scripts/gen_playwright.py --run run-xxx
+python3 scripts/gen_playwright.py --dry-run
+
+# 导入 Harness 侧已有的生成脚本（如 e2e/playwright-dsh/）
+python3 scripts/gen_playwright.py --import <脚本目录> --run run-xxx
+```
+
+### 2. DSL → 定位脚本
+
+生成器与 `tests/ui/test_ui_cases.py` 共用同一套 DSL 动作集，逐条翻译并保留步骤注释：
+
+| DSL | Playwright/TS |
+| --- | --- |
+| `goto /overview` | `page.goto(base + '/overview', { waitUntil: 'domcontentloaded' })` |
+| `wait 3` | `page.waitForTimeout(3000)` |
+| `click <selector>` / `fill <sel> <值>` / `press` / `check` / `select` / `hover` | 对应 `page.*` 方法 |
+| `expect_url_contains <text>` | `expect(page.url()...).toContain(...)` |
+| `expect_text <sel> <text>` | `expect(page.locator(sel)).toContainText(...)` |
+| `expect_visible <sel>` | `expect(page.locator(sel)).toBeVisible()` |
+| `screenshot <name>` | `page.screenshot({ path: 'records/<run_id>/playwright/screenshots/<name>.png' })` |
+| `skill ...` | 显式注释「需 EGO Skill，Playwright 原生不支持」，不静默跳过 |
+
+按 `case_id` 前两段分组（`UI-NAV-001` → `UI-NAV` → `ui-nav.e2e.ts`），
+并生成 `index.ts`、`playwright.config.ts`、`playwright-manifest.json`。
+
+### 3. 产物落点与回流
+
+* 本地：`records/<run_id>/playwright/`
+* 报告：自动追加「Playwright 定位脚本产物」章节（模块 / 脚本 / 用例数 / SHA1），
+  JSON 报告带 `playwright_scripts`
+* MySQL：复用 `dsh_test_cases.ext_json` 写入
+  `script_path` / `script_sha1` / `script_generator` / `script_generated_at` / `script_mode`
+  （`generated` 或 `imported`），无需改表结构
+* 配置：`config/workflow.yaml → playwright.enabled / inject_auth / storage`
+
 ## 缺陷台账（过程发现即留痕）
 
 测试过程中发现的失败/错误**不会只体现在报告里**，而是自动开单进缺陷台账，
@@ -428,6 +477,8 @@ db:
 | `python3 scripts/bug_tracker.py assign --bug-id BUG-xxx --assignee 李四` | 指派缺陷处理人 |
 | `python3 scripts/bug_tracker.py stats` | 缺陷统计（按状态 / 级别） |
 | `python3 scripts/bug_tracker.py sync --run run-xxx` | 生成批次缺陷快照（供回流） |
+| `python3 scripts/gen_playwright.py --run run-xxx` | 生成 Playwright 定位脚本产物 |
+| `python3 scripts/gen_playwright.py --import <dir>` | 导入已有生成的 Playwright 脚本 |
 
 ## 注意事项
 

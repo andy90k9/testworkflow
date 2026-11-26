@@ -316,6 +316,16 @@ def main():
     except Exception as exc:  # noqa: BLE001
         print(f"缺陷台账跳过: {exc}")
 
+    # ⑤ Playwright 定位脚本产物：与 UI 执行器共用 cases/ui/*.yaml 的 DSL
+    try:
+        import gen_playwright
+
+        manifest = gen_playwright.generate(paths, run_id)
+        print(f"Playwright 脚本产物: {manifest['total_cases']} 条用例 | "
+              f"{len(manifest['features'])} 个脚本 | {len(manifest['files'])} 个文件")
+    except Exception as exc:  # noqa: BLE001
+        print(f"Playwright 脚本生成跳过: {exc}")
+
     write_json(run_dir / "summary.json", summary)
     write_json(paths["records"] / "latest.json", {"run_id": run_id, "run_dir": str(run_dir)})
 
