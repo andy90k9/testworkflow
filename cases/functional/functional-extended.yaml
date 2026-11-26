@@ -1,0 +1,209 @@
+- case_id: FUNC-P95-001
+  title: P95 小样本：分桶聚合结果等于最近秩参考值，且不再使用 OFFSET 深翻页
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_small_dataset_matches_reference
+      -q
+    expected: 使用 GROUP BY bucket 且无 OFFSET；结果与最近秩参考一致并落在桶上界内
+  checks:
+  - name: P95 小样本：分桶聚合结果等于最近秩参考值，且不再使用 OFFSET 深翻页
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_small_dataset_matches_reference
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-002
+  title: P95 桶上界：step=100 时返回 bucket*step+step-1
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_bucket_upper_bound
+      -q
+    expected: 返回目标样本所在桶的上界 3999，且不小于目标样本值 3900
+  checks:
+  - name: P95 桶上界：step=100 时返回 bucket*step+step-1
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_bucket_upper_bound
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-003
+  title: 自定义分位 pct=0.5：中位数计算正确
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_custom_percentile
+      -q
+    expected: pct=0.5 结果等于最近秩参考并落在目标样本桶上界内
+  checks:
+  - name: 自定义分位 pct=0.5：中位数计算正确
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_custom_percentile
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-004
+  title: 自适应步长：大 max_duration 下分位数误差 <1%，step 收敛到 ceil(max/1000)
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_large_max_duration_accuracy
+      -q
+    expected: P95 与参考值误差 <1%，SQL 使用 DIV ceil(max/1000)
+  checks:
+  - name: 自适应步长：大 max_duration 下分位数误差 <1%，step 收敛到
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_large_max_duration_accuracy
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-005
+  title: 全 0 duration：有效样本为 0 时返回 0
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_all_zero_duration
+      -q
+    expected: 所有 duration=0 时 P95 返回 0
+  checks:
+  - name: 全 0 duration：有效样本为 0 时返回 0
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_all_zero_duration
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-006
+  title: total<=0 快速返回 0 且不触发分桶查询
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_zero_total_fastpath
+      -q
+    expected: total=0 时返回 0 且不发出 GROUP BY bucket 查询
+  checks:
+  - name: total<=0 快速返回 0 且不触发分桶查询
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_zero_total_fastpath
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-007
+  title: 负数 duration 被 duration>0 与阈值条件排除
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_negative_durations_excluded
+      -q
+    expected: 负数不参与分位计算，结果与仅正数参考一致
+  checks:
+  - name: 负数 duration 被 duration>0 与阈值条件排除
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_negative_durations_excluded
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-008
+  title: 集成：stats_summary 内 P95 生效，MAX(duration) 只查询一次
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_stats_summary_integrates_p95
+      -q
+    expected: summary.total=5，max_duration=40000，p95 正确，MAX 仅查一次
+  checks:
+  - name: '集成：stats_summary 内 P95 生效，MAX(duration) '
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_stats_summary_integrates_p95
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-009
+  title: 筛选隔离：带 datname 条件时只对命中行计算 P95
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_with_filter_clause
+      -q
+    expected: 带 datname=db_b 过滤时 P95 仅基于 db_b 的 4 行
+  checks:
+  - name: 筛选隔离：带 datname 条件时只对命中行计算 P95
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_with_filter_clause
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-P95-010
+  title: 真实场景：大量 0 探活 + 少量慢查询时 P95 不被拉平为 0
+  module: P95分位回归
+  priority: P1
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_zero_heavy_workload
+      -q
+    expected: 存在 duration>0 行时 P95 > 0，且等于慢查询样本的桶上界
+  checks:
+  - name: 真实场景：大量 0 探活 + 少量慢查询时 P95 不被拉平为 0
+    command: cd backend && .venv/bin/python -m pytest ../e2e/test_mirror_p95.py::test_p95_zero_heavy_workload
+      -q
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-SMOKE-001
+  title: API 冒烟：后端 /openapi.json 可达且注册了 87 个路由
+  module: 接口冒烟
+  priority: P0
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: curl -sf --max-time 5 http://127.0.0.1:8000/openapi.json | python3 -c
+      'import sys,json; d=json.load(sys.stdin); assert d["info"]["title"]=="Hologres
+      慢SQL治理平台" and len(d["paths"])>80'
+    expected: 后端 openapi.json 可访问，标题为「Hologres 慢SQL治理平台」，且注册路径数 > 80
+  checks:
+  - name: API 冒烟：后端 /openapi.json 可达且注册了 87 个路由
+    command: curl -sf --max-time 5 http://127.0.0.1:8000/openapi.json | python3 -c
+      'import sys,json; d=json.load(sys.stdin); assert d["info"]["title"]=="Hologres
+      慢SQL治理平台" and len(d["paths"])>80'
+    expect_exit_code: 0
+  run_id: run-20261126-223014
+- case_id: FUNC-SMOKE-002
+  title: API 冒烟：直连数据源 ds_id=2 的 summary 返回 200 且 p95_duration 有值
+  module: 接口冒烟
+  priority: P0
+  precondition: 被测服务在 127.0.0.1:8000 运行；backend/.venv 已安装依赖
+  related_req: REQ-P95-AGG
+  steps:
+  - step: 1
+    action: curl -sf --max-time 20 'http://127.0.0.1:8000/api/slowsql/stats/summary?ds_id=2&start_time=2026-01-01%2000:00:00&end_time=2027-01-01%2000:00:00'
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["code"]==0 and
+      d["data"]["total"]>=0 and d["data"]["p95_duration"]>=0'
+    expected: ds_id=2 的统计汇总返回 code=0，且 total 与 p95_duration 为合法非负值（该数据源当前无数据，total
+      为 0）
+  checks:
+  - name: 'API 冒烟：直连数据源 ds_id=2 的 summary 返回 200 且 '
+    command: curl -sf --max-time 20 'http://127.0.0.1:8000/api/slowsql/stats/summary?ds_id=2&start_time=2026-01-01%2000:00:00&end_time=2027-01-01%2000:00:00'
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["code"]==0 and
+      d["data"]["total"]>=0 and d["data"]["p95_duration"]>=0'
+    expect_exit_code: 0
+  run_id: run-20261126-223014

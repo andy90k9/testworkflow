@@ -5,7 +5,7 @@
 
 workflow:
   name: dsh
-  version: "1.2.0"
+  version: "1.4.0"   # v1.4：新增 UI 覆盖度审计（功能→UI 映射 + 交互深度）
 
 # —— 前置输入：被测项目区 ——
 project:
@@ -23,11 +23,11 @@ tests:
   api_dir: tests/api
   ui_dir: tests/ui
   functional_dir: tests/functional        # 功能（场景层）执行器；无该目录时退化为按关联关系聚合派生
-  api_base_url: http://localhost:8000      # 被测服务接口地址（按需修改）
-  ui_base_url: http://localhost:3000       # 被测前端地址（按需修改）
+  api_base_url: http://127.0.0.1:8000      # 被测服务接口地址（按需修改）
+  ui_base_url: http://127.0.0.1:5173       # 被测前端地址（按需修改）
   api_timeout: 15                          # 接口超时（秒）
   ui_timeout: 10                           # UI 操作超时（秒）
-  ui_mode: cdp                             # local=独立 Playwright | cdp=接管已打开浏览器 | ego_skill=EGO CLI+JS
+  ui_mode: ego_skill                       # local=独立 Playwright | cdp=接管已打开浏览器 | ego_skill=EGO CLI+JS
   ui_cdp_endpoint: http://127.0.0.1:9222   # 兼容旧配置；优先取 providers.yaml → ego_browser.cdp_endpoint
   ui_headless: true                        # local 模式无头开关（cdp 模式不适用）
 

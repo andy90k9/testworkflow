@@ -48,7 +48,7 @@ def _functional_section(items: list) -> str:
         key = {"passed": "passed", "failed": "failed", "errors": "errors"}.get(it.get("status"), "skipped")
         stats[key] += 1
     lines = [
-        f"共 {len(func_items)} 条功能（场景层）用例：真实执行 {len(executed)} 条，"
+        f"共 {len(func_items)} 条功能（场景层）用例：真实执行 {len(executed)} 条（机判 checks），"
         f"按关联关系派生 {len(derived)} 条（失败 > 部分通过 > 阻塞 > 通过 > 未执行）。",
         f"统计：通过 {stats['passed']} | 失败 {stats['failed']} | 阻塞 {stats['errors']} | 未执行 {stats['skipped']}",
         "",
@@ -58,9 +58,11 @@ def _functional_section(items: list) -> str:
     for it in func_items:
         msg = (it.get("message") or "").replace("|", "\\|").replace("\n", " ")[:120]
         related = ", ".join(it.get("related") or []) or "-"
-        source = "派生" if it.get("source") == "derived" else "执行"
+        source = "派生" if it.get("source") == "derived" else "执行(checks)"
         lines.append(f"| {it.get('case_id')} | {STATUS_CN.get(it.get('status'), it.get('status'))} "
                      f"| {source} | {msg or '-'} | {related} |")
+    lines.extend(["", "注：功能用例的 steps 为自然语言描述，未逐条机判；机判范围为 checks 字段，"
+                      "UI 渲染由 UI 用例覆盖。"])
     return "\n".join(lines) + "\n"
 
 
@@ -103,7 +105,83 @@ def _playwright_section(manifest: dict) -> str:
                      f"| {len(row.get('case_ids') or [])} | {row.get('sha1') or '-'} |")
     lines.extend(["", "配套文件：`index.ts`（脚本入口）、`playwright.config.ts`（运行配置）、"
                       "`playwright-manifest.json`（产物清单）。", ""])
+    lines.append("**注意：脚本仅生成归档，流水线未执行 Playwright；UI 结果来自 ego_skill 执行器，"
+                 "脚本中注入的 token 为占位值，不可当作登录态证明。**")
     return "\n".join(lines)
+
+
+def _cell(value) -> str:
+    text = "-" if value in (None, "") else str(value)
+    return text.replace("|", "\\|").replace("\n", " ")[:220]
+
+
+def _ui_coverage_section(data: dict) -> str:
+    """渲染 UI 覆盖度（当前用例集，不等于本轮执行数量）。"""
+    if not data:
+        return ""
+    verbs = "、".join(
+        f"{name} {count}" for name, count in (data.get("action_verbs") or {}).items()
+    ) or "-"
+    lines = [
+        "以下统计来自当前 `cases/` 用例集，**不是本轮执行数量**：", "",
+        "| 指标 | 数值 |", "| --- | --- |",
+        f"| 功能用例 / UI 用例 | {data.get('functional_total', 0)} / {data.get('ui_total', 0)} |",
+        f"| 已映射 / 未映射功能用例 | {data.get('mapped_functional', 0)} / {data.get('unmapped_functional', 0)} |",
+        f"| 功能→UI 覆盖率 | {data.get('coverage_rate', 0)}% |",
+        f"| 交互型 / 仅渲染 UI 用例 | {data.get('interaction_cases', 0)} / {data.get('render_only_cases', 0)} |",
+        "", f"动作分布：{verbs}。",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _scope_section(audit: dict) -> str:
+    """把审计产物渲染成人可读的「执行范围与限制」章节。"""
+    if not audit:
+        return ""
+    gen = audit.get("generation") or {}
+    scope = audit.get("execution_scope") or {}
+    ctx = audit.get("context") or {}
+    changes = audit.get("case_changes") or {}
+    mid = changes.get("mid_run") or []
+    prev = changes.get("vs_previous") or []
+    source = gen.get("case_source") or "-"
+    if ctx.get("skip_gen"):
+        generation_label = "跳过生成（--skip-gen）"
+    elif source == "existing_manual_cases":
+        generation_label = "生成引擎未接入，沿用现有用例"
+    else:
+        generation_label = f"生成引擎产出（{source}）"
+
+    rows = [
+        ("用例生成", generation_label),
+        ("用例来源", source),
+        ("需求/代码输入", f"requirements {gen.get('requirements_files', 0)} 个文件；"
+                          f"src {gen.get('source_files', 0)} 个文件"),
+        ("run_id 注入", "流水线统一注入" if gen.get("run_id_injected") else "-"),
+        ("UI 执行通道", f"{scope.get('ui_mode') or '-'}；"
+                        f"skill 动作 {scope.get('ui_skill_actions', 0)} 条；"
+                        f"截图 {scope.get('ui_screenshots', 0)} 张"),
+        ("功能层机判", f"checks {scope.get('functional_checks_executed', 0)} 条；自然语言 steps 未机判"),
+        ("Playwright", f"生成 {scope.get('playwright_scripts_generated', 0)} 个脚本；"
+                       f"执行 {scope.get('playwright_scripts_executed', 0)} 个"),
+        ("用例契约变更", f"执行中 {len(mid)} 条；"
+                         f"对比 {changes.get('previous_run') or '上批次'} {len(prev)} 条"),
+        ("未闭环缺陷", ", ".join(audit.get("open_bugs") or []) or "-"),
+    ]
+    lines = [
+        "以下内容由审计产物 `audit.json` 自动生成，非人工填写：", "",
+        "| 项目 | 实测结果 |", "| --- | --- |",
+    ]
+    for key, value in rows:
+        lines.append(f"| {_cell(key)} | {_cell(value)} |")
+    if prev:
+        lines.extend(["", "跨批次断言变化用例："
+                      + ", ".join(str(c.get("case_id")) for c in prev) + "。"])
+    limitations = audit.get("limitations") or []
+    if limitations:
+        lines.extend(["", "限制项："])
+        lines.extend(f"- {item}" for item in limitations)
+    return "\n".join(lines) + "\n"
 
 
 def _trail_label(item: dict) -> str:
@@ -270,11 +348,14 @@ def _casepipe_data(providers: dict, details: list, run_dir: Path, env: str) -> d
 def main():
     parser = argparse.ArgumentParser(description="DSH 测试报告生成")
     parser.add_argument("--run", help="指定 run_id，如 run-20261126-153000；缺省取最近一次")
+    parser.add_argument("--out-dir", help="报告输出目录（预览用；指定时不覆盖正式报告/latest.json）")
     args = parser.parse_args()
 
     cfg = load_config()
     paths = ensure_dirs(cfg)
     records_dir = paths["records"]
+    out_dir = Path(args.out_dir) if args.out_dir else paths["reports"]
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     if args.run:
         run_dir = records_dir / (args.run if str(args.run).startswith("run-") else f"run-{args.run}")
@@ -317,6 +398,22 @@ def main():
         except Exception:  # noqa: BLE001
             qa_ext = {}
 
+    audit = {}
+    audit_path = run_dir / "audit.json"
+    if audit_path.exists():
+        try:
+            audit = read_json(audit_path) or {}
+        except Exception:  # noqa: BLE001
+            audit = {}
+
+    ui_coverage = {}
+    ui_cov_path = run_dir / "ui-coverage.json"
+    if ui_cov_path.exists():
+        try:
+            ui_coverage = read_json(ui_cov_path) or {}
+        except Exception:  # noqa: BLE001
+            ui_coverage = {}
+
     providers = load_providers()
     env = str(summary.get("config", {}).get("api_base_url") or "")
     casepipe = _casepipe_data(providers, details, run_dir, env)
@@ -350,8 +447,14 @@ def main():
         casepipe_section = _casepipe_section(casepipe.get("scenarios") or [],
                                              casepipe.get("scenario_stats") or {})
 
-    numerals = ("三", "四", "五", "六", "七", "八", "九")
+    numerals = ("三", "四", "五", "六", "七", "八", "九", "十", "十一")
     extra_sections = []
+    scope_section = _scope_section(audit)
+    if scope_section:
+        extra_sections.append(("执行范围与限制", scope_section))
+    ui_cov_section = _ui_coverage_section(ui_coverage)
+    if ui_cov_section:
+        extra_sections.append(("UI 覆盖度（当前用例集）", ui_cov_section))
     functional_section = _functional_section(details)
     if functional_section:
         extra_sections.append(("功能（场景层）用例统计", functional_section))
@@ -376,7 +479,13 @@ def main():
     report.extend([f"## {num_fail}、失败用例分析", "", _fail_section(details), "",
                    f"## {num_concl}、结论与建议", ""])
     if o["failed"] + o["errors"] == 0:
-        report.append("本次执行全部通过，可进入发布评估环节。")
+        report.append("在本次执行的用例范围内全部通过。")
+        limits = audit.get("limitations") or []
+        if limits:
+            report.append(f"但存在 {len(limits)} 项范围限制，通过率仅代表现有用例与当前环境；"
+                          "发布评估前请核对「执行范围与限制」章节，不宜直接等同于全链路通过。")
+        else:
+            report.append("未发现范围限制，可进入发布评估环节。")
     else:
         report.append(f"本次执行存在 {o['failed'] + o['errors']} 个失败/错误用例，"
                       f"建议优先排查 P0/P1 用例，并核对失败明细中的报错信息。")
@@ -388,7 +497,7 @@ def main():
     report.append("")
 
     run_id = summary["run_id"]
-    report_path = paths["reports"] / f"report-{run_id}.md"
+    report_path = out_dir / f"report-{run_id}.md"
     report_path.write_text("\n".join(report), encoding="utf-8")
 
     structured = {
@@ -405,12 +514,15 @@ def main():
         "qa_toolkit_extended": qa_ext,
         "module_distribution": {},
         "qa_pipeline": casepipe,
+        "audit": audit,
+        "ui_coverage": ui_coverage,
     }
-    json_path = paths["reports"] / f"report-{run_id}.json"
+    json_path = out_dir / f"report-{run_id}.json"
     write_json(json_path, structured)
 
-    write_json(paths["reports"] / "latest.json",
-               {"report_path": str(report_path), "report_json_path": str(json_path), "run_id": run_id})
+    if not args.out_dir:
+        write_json(paths["reports"] / "latest.json",
+                   {"report_path": str(report_path), "report_json_path": str(json_path), "run_id": run_id})
 
     print(f"测试报告已生成: {report_path}")
     print(f"结构化报告已生成: {json_path}")

@@ -30,6 +30,7 @@ from dsh_common import (  # noqa: E402
     load_providers, WORKFLOW_ROOT,
 )
 import qa_casepipe  # noqa: E402
+import run_audit  # noqa: E402
 
 
 def _run(stage: str, cmd: list, allow_fail: bool = False) -> int:
@@ -87,11 +88,24 @@ def main():
     # 统一注入 run_id，保证手写用例也绑定本次批次
     inject_run_id_into_cases(cfg, paths, run_id)
 
+    # 记录生成方式 + 执行前用例契约基线（供报告披露范围、识别中途改用例）
+    run_audit.init_audit(cfg, providers, paths, run_id, args.skip_gen)
+
     # 格式校验
     _run("格式校验", ["scripts/validate_cases.py"])
 
+    # UI 覆盖度审计：基于当前用例集统计功能→UI 映射与交互深度（不依赖执行结果）
+    _run("UI 覆盖度审计", ["scripts/ui_coverage.py"], allow_fail=True)
+
     # ④⑤ 执行测试 + 记录（用例失败返回 1，属正常分支）
     test_code = _run("④⑤ 执行测试+记录", ["scripts/run_tests.py", "--only", args.only], allow_fail=True)
+
+    # 执行后再次快照用例并生成审计报告（异常退出也要留下范围证据）
+    audit = run_audit.finalize_audit(cfg, providers, paths, run_id)
+    print(f"\n执行范围审计: 限制项 {len(audit['limitations'])} 条 | "
+          f"中途变更 {len(audit['case_changes']['mid_run'])} 条 | "
+          f"跨批次变更 {len(audit['case_changes']['vs_previous'])} 条")
+
     if test_code == 3:
         print("\nEGO 浏览器 CDP 连接失败，流水线以退出码 3 结束")
         sys.exit(3)

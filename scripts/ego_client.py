@@ -156,9 +156,16 @@ def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
         lines.append(f"report.assert_detail.push({{ name: 'expect_url_contains', expected: {_js(arg1)}, actual: u{idx}, passed: true }});")
         step_ok("assert")
     elif verb == "expect_text":
+        needle = arg2
         lines.append(f"const snap{idx} = await page.snapshot({{ scope: 'full_page' }});")
-        lines.append(f"if (!snap{idx}.includes({_js(arg2)})) {{ throw new Error({_js(f'期望页面包含文本 {arg2}')}); }}")
-        lines.append(f"report.assert_detail.push({{ name: 'expect_text', expected: {_js(arg2)}, actual: snap{idx}.slice(0, 500), passed: true }});")
+        lines.append(f"const needle{idx} = {_js(needle)};")
+        lines.append(f"const pos{idx} = snap{idx}.indexOf(needle{idx});")
+        lines.append(f"if (pos{idx} < 0) {{ throw new Error({_js(f'期望页面包含文本 {needle}')}); }}")
+        lines.append(
+            f"report.assert_detail.push({{ name: 'expect_text', expected: needle{idx}, "
+            f"actual: snap{idx}.slice(Math.max(0, pos{idx} - 120), pos{idx} + needle{idx}.length + 180), "
+            f"match_pos: pos{idx}, snapshot_len: snap{idx}.length, passed: true }});"
+        )
         step_ok("assert")
     elif verb == "expect_visible":
         lines.append(f"await page.waitForSelector({_js(arg1)}, {{ state: 'visible', timeout: {timeout_ms} }});")

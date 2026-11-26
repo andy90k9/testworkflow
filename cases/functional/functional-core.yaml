@@ -1,0 +1,780 @@
+- case_id: FUNC-AUTH-001
+  run_id: run-20261126-223014
+  title: 鉴权模式-无令牌时按 AUTH_MODE 放行并返回匿名上下文
+  module: auth
+  priority: P0
+  precondition: 后端 AUTH_MODE=none（本地全栈）
+  related_req: REQ-AUTH
+  steps:
+  - step: 1
+    action: 以无 Authorization 头访问 /api/auth/me
+    expected: 返回 code=200，data.authMode=authMode 配置值（none），不返回 401
+  - step: 2
+    action: 使用该匿名上下文访问业务列表接口 /api/datasource
+    expected: 正常返回 code=0 与数据源列表，说明匿名放行对所有业务路由一致生效
+  checks:
+  - name: 匿名上下文不返回401
+    request:
+      method: GET
+      path: /api/auth/me
+    expect:
+      status_code: 200
+      json_path: $.data.authMode
+      equals: none
+  - name: 匿名放行对业务路由一致
+    request:
+      method: GET
+      path: /api/datasource
+    expect:
+      status_code: 200
+      json_path: $.code
+      equals: 0
+- case_id: FUNC-SLOWSQL-001
+  run_id: run-20261126-223014
+  title: 慢SQL查询-三要素参数缺失时统一 422 校验拦截
+  module: slowsql
+  priority: P0
+  precondition: 已存在数据源 ds_id=1
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: 调用 /api/slowsql 仅传 start_time 与 end_time，不传 ds_id
+    expected: 返回 HTTP 422，detail 指出 ds_id 为 Field required，不落到 500
+  - step: 2
+    action: 调用 /api/slowsql/overview 不传 ds_id
+    expected: 同样返回 422，说明列表与统计接口共用同一套三要素参数契约
+  checks:
+  - name: 列表缺ds_id返回422
+    request:
+      method: GET
+      path: /api/slowsql
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+    expect:
+      status_code: 422
+      contains: Field required
+  - name: 总览缺ds_id返回422
+    request:
+      method: GET
+      path: /api/slowsql/overview
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+    expect:
+      status_code: 422
+      contains: Field required
+- case_id: FUNC-SLOWSQL-002
+  run_id: run-20261126-223014
+  title: 慢SQL列表-合法三要素返回统一 code/msg/data 信封
+  module: slowsql
+  priority: P0
+  precondition: 数据源 ds_id=1 为 Hologres 镜像模式
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: 传 ds_id=1、时间范围 2026-09-09~2026-09-10 调用 /api/slowsql
+    expected: 返回 code=0 与 data 数组，明细结构与列表列定义一致
+  checks:
+  - name: 合法三要素返回信封
+    request:
+      method: GET
+      path: /api/slowsql
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.code
+      equals: 0
+- case_id: FUNC-SLOWSQL-003
+  run_id: run-20261126-223014
+  title: 慢SQL阈值-低于3000ms的查询不计入慢SQL统计
+  module: slowsql
+  priority: P0
+  precondition: t_hologres_slow_sql_log 中 ds_id=1 的 60 条记录 duration 均小于 3000ms
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: 用覆盖全部样本的时间范围调用 /api/slowsql/count
+    expected: 返回 data=0，证明 duration >= 3000 的阈值过滤真实生效
+  - step: 2
+    action: 用同一范围调用 /api/slowsql/stats/summary
+    expected: total=0 且 avg/max/p95 均为 0，统计口径与明细口径保持一致
+  checks:
+  - name: 阈值过滤后计数为0
+    request:
+      method: GET
+      path: /api/slowsql/count
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.data
+      equals: 0
+  - name: 汇总口径与明细一致
+    request:
+      method: GET
+      path: /api/slowsql/stats/summary
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.data.total
+      equals: 0
+- case_id: FUNC-SLOWSQL-004
+  run_id: run-20261126-223014
+  title: 慢SQL统计-耗时分布桶结构稳定，前端图表可直接渲染
+  module: slowsql
+  priority: P1
+  precondition: 同上
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: 调用 /api/slowsql/stats/duration
+    expected: 返回 <1s / 1~3s / 3~10s / 10~30s / >30s 五档固定桶，空数据时为 count=0 而非空数组
+  checks:
+  - name: 耗时分布固定五桶
+    request:
+      method: GET
+      path: /api/slowsql/stats/duration
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.data[0].bucket
+      equals: <1s
+  - name: 空数据返回0而非空数组
+    request:
+      method: GET
+      path: /api/slowsql/stats/duration
+      params:
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.data[0].count
+      equals: 0
+- case_id: FUNC-SLOWSQL-005
+  run_id: run-20261126-223014
+  title: 列偏好-未配置时回落默认列集合并保持列序
+  module: slowsql
+  priority: P2
+  precondition: user_column_preference 表为空
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: 调用 /api/slowsql/columns/preference?ds_id=1
+    expected: 返回默认列数组，首列为 query_id，且包含 duration 与 query_start
+  checks:
+  - name: 默认列首列为query_id
+    request:
+      method: GET
+      path: /api/slowsql/columns/preference
+      params:
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.data[0]
+      equals: query_id
+- case_id: FUNC-SLOWSQL-006
+  run_id: run-20261126-223014
+  title: 慢SQL详情-查不到数据时返回业务码而非异常
+  module: slowsql
+  priority: P1
+  precondition: 该 query_id 不在当前数据源样本中
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: 调用 /api/slowsql/{query_id}?ds_id=1 查询不存在的 query_id
+    expected: HTTP 200 且 code=1、msg=未找到该慢SQL，前端可据此提示而不报错
+  checks:
+  - name: 不存在的详情返回业务码1
+    request:
+      method: GET
+      path: /api/slowsql/1002014565796009549
+      params:
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.code
+      equals: 1
+- case_id: FUNC-SLOWSQL-007
+  run_id: run-20261126-223014
+  title: 慢SQL导出-导出CSV与列表列头一致
+  module: slowsql
+  priority: P1
+  precondition: 已有数据源 ds_id=1
+  related_req: REQ-SLOWSQL
+  steps:
+  - step: 1
+    action: POST /api/slowsql/export 传三要素参数
+    expected: 返回 text/csv，首行是 query_id,datname,usename 等列头，空数据时仅表头
+  checks:
+  - name: 导出返回CSV列头
+    request:
+      method: POST
+      path: /api/slowsql/export
+      body:
+        ds_id: 1
+        start_time: '2026-01-01 00:00:00'
+        end_time: '2027-01-01 00:00:00'
+    expect:
+      status_code: 200
+      contains: query_id,datname,usename
+- case_id: FUNC-DS-001
+  run_id: run-20261126-223014
+  title: 数据源-新增时类型选项覆盖 Hologres/MySQL/OceanBase
+  module: datasource
+  priority: P0
+  precondition: 无
+  related_req: REQ-DS
+  steps:
+  - step: 1
+    action: 打开数据库配置页并点击新增数据源
+    expected: 类型下拉包含 Hologres、MySQL、OceanBase 三种，默认端口分别为 80/3306/2883
+  - step: 2
+    action: 调用 /api/datasource/types 核对字典
+    expected: 返回三项且顺序与下拉一致
+  checks:
+  - name: 类型字典覆盖三种数据库
+    request:
+      method: GET
+      path: /api/datasource/types
+    expect:
+      status_code: 200
+      json_path: $.data[0].value
+      equals: hologres
+  - name: OceanBase默认端口2883
+    request:
+      method: GET
+      path: /api/datasource/types
+    expect:
+      status_code: 200
+      json_path: $.data[2].default_port
+      equals: 2883
+- case_id: FUNC-DS-002
+  run_id: run-20261126-223014
+  title: 数据源-列表按慢SQL来源区分镜像表与直连
+  module: datasource
+  priority: P0
+  precondition: 已配置 3 个数据源
+  related_req: REQ-DS
+  steps:
+  - step: 1
+    action: 查看数据源列表的"慢SQL来源"列
+    expected: demo-hologres 与 hologres同步库 显示镜像表，hologres 显示直连
+  - step: 2
+    action: 调用 /api/datasource 核对 query_mode 字段
+    expected: 依次为 mirror / direct / mirror，与页面一致
+  checks:
+  - name: 首个数据源为镜像模式
+    request:
+      method: GET
+      path: /api/datasource
+    expect:
+      status_code: 200
+      json_path: $.data[0].query_mode
+      equals: mirror
+  - name: 第二个数据源为直连
+    request:
+      method: GET
+      path: /api/datasource
+    expect:
+      status_code: 200
+      json_path: $.data[1].query_mode
+      equals: direct
+- case_id: FUNC-DS-003
+  run_id: run-20261126-223014
+  title: 数据源-密码加密存储，列表接口不回传敏感字段
+  module: datasource
+  priority: P0
+  precondition: 数据源已保存连接密码
+  related_req: REQ-DS
+  steps:
+  - step: 1
+    action: 调用 /api/datasource 查看返回体字段
+    expected: 仅返回 id/name/db_type/query_mode/host/port/database/username 等，不含 password
+      明文字段
+  - step: 2
+    action: 对比 /api/llm/configs 的敏感字段处理
+    expected: LLM 的 api_key 以 api_key_masked 掩码返回，敏感信息脱敏策略在两类配置上一致
+  checks:
+  - name: 列表不回传password字段
+    request:
+      method: GET
+      path: /api/datasource
+    expect:
+      status_code: 200
+      json_path: $.data[2].db_type
+      equals: mysql
+  - name: LLM密钥以掩码返回
+    request:
+      method: GET
+      path: /api/llm/configs
+    expect:
+      status_code: 200
+      json_path: $.data[0].api_key_masked
+      equals: sk-J****TrJE
+- case_id: FUNC-DBTABLE-001
+  run_id: run-20261126-223014
+  title: 库表监控-按数据源聚合慢查询命中统计
+  module: dbtable
+  priority: P1
+  precondition: db_table_meta 已同步 17 张表
+  related_req: REQ-DBTABLE
+  steps:
+  - step: 1
+    action: 打开库表监控页并选择数据源
+    expected: 展示命中表数、慢查询总命中、累计耗时与最近同步时间
+  - step: 2
+    action: 调用 /api/dbtable/stats?ds_id=1
+    expected: 返回 total_tables/total_slow_queries/total_duration_ms/last_sync 四字段
+  checks:
+  - name: 库表统计四字段齐全
+    request:
+      method: GET
+      path: /api/dbtable/stats
+      params:
+        ds_id: 1
+    expect:
+      status_code: 200
+      json_path: $.data.total_tables
+      equals: 0
+- case_id: FUNC-DQC-001
+  run_id: run-20261126-223014
+  title: 数仓DQC-未配置连接时引导而非报错
+  module: dqc
+  priority: P1
+  precondition: dqc_rule/scan/scan_run 均为 0 条
+  related_req: REQ-DQC
+  steps:
+  - step: 1
+    action: 打开数仓DQC质量页
+    expected: 页面提示"尚未配置 DataWorks 连接，请先到 DataWorks 配置新增"，不出现接口错误
+  - step: 2
+    action: 调用 /api/dqc/overview
+    expected: 返回全 0 计数与 last_sync=null，stale=false
+  checks:
+  - name: 未配置时返回全0计数
+    request:
+      method: GET
+      path: /api/dqc/overview
+    expect:
+      status_code: 200
+      json_path: $.data.scan_total
+      equals: 0
+  - name: 未同步时stale为false
+    request:
+      method: GET
+      path: /api/dqc/overview
+    expect:
+      status_code: 200
+      json_path: $.data.stale
+      equals: false
+- case_id: FUNC-ALERT-001
+  run_id: run-20261126-223014
+  title: 告警中心-通道/模板/规则/记录四段配置完整可用
+  module: alert
+  priority: P0
+  precondition: 已有 2 个通道、4 个模板、5 条规则、122 条记录
+  related_req: REQ-ALERT
+  steps:
+  - step: 1
+    action: 依次调用 /api/alert/channels、/templates、/rules、/records
+    expected: 四个接口均返回 code=0，通道 type=wecom，规则含 metric=success_rate 与 operator
+  - step: 2
+    action: 查看告警中心页各 Tab
+    expected: 机器人通道 Tab 展示 2 条 Webhook，支持测试推送与删除
+  checks:
+  - name: 通道为企业微信
+    request:
+      method: GET
+      path: /api/alert/channels
+    expect:
+      status_code: 200
+      json_path: $.data[0].type
+      equals: wecom
+  - name: 规则指标为成功率
+    request:
+      method: GET
+      path: /api/alert/rules
+    expect:
+      status_code: 200
+      json_path: $.data[0].metric
+      equals: success_rate
+  - name: 模板接口可用
+    request:
+      method: GET
+      path: /api/alert/templates
+    expect:
+      status_code: 200
+      json_path: $.code
+      equals: 0
+  - name: 告警记录接口可用
+    request:
+      method: GET
+      path: /api/alert/records
+      params:
+        page: 1
+        page_size: 3
+    expect:
+      status_code: 200
+      json_path: $.code
+      equals: 0
+- case_id: FUNC-MPLAT-001
+  run_id: run-20261126-223014
+  title: 指标平台监控-调用统计汇总与TopN口径一致
+  module: mplat
+  priority: P0
+  precondition: mplat_api_record 有 18 万+ 记录
+  related_req: REQ-MPLAT
+  steps:
+  - step: 1
+    action: 调用 /api/mplat/stats/summary
+    expected: 返回 total/success/fail/success_rate/avg_cost_ms/p95_cost_ms/max_cost_ms/api_count
+      七字段
+  - step: 2
+    action: 调用 /api/mplat/stats/top-api 对比
+    expected: TopN 首项为"指标取数接口"，各接口 call_count 之和与 summary.total 同一量级
+  checks:
+  - name: 汇总覆盖7个接口
+    request:
+      method: GET
+      path: /api/mplat/stats/summary
+    expect:
+      status_code: 200
+      json_path: $.data.api_count
+      equals: 7
+  - name: TopN首位为指标取数接口
+    request:
+      method: GET
+      path: /api/mplat/stats/top-api
+    expect:
+      status_code: 200
+      json_path: $.data[0].api_name
+      equals: 指标取数接口
+- case_id: FUNC-MPLAT-002
+  run_id: run-20261126-223014
+  title: 指标平台监控-数据对账展示我方与远端统计差异
+  module: mplat
+  priority: P2
+  precondition: 已配置指标平台实例
+  related_req: REQ-MPLAT
+  steps:
+  - step: 1
+    action: 调用 /api/mplat/stats/reconcile
+    expected: 返回 date/local_total/local_fail/remote_total/remote_fail/match 对比结构
+  - step: 2
+    action: 查看调用统计页对账区块
+    expected: 远端不可达时 remote_* 为 null 且页面不报错
+  checks:
+  - name: 对账结构含远端字段
+    request:
+      method: GET
+      path: /api/mplat/stats/reconcile
+    expect:
+      status_code: 200
+      json_path: $.data.remote_total
+      equals: null
+- case_id: FUNC-ISSUE-001
+  run_id: run-20261126-223014
+  title: 慢SQL工单-按状态流转并支持认领/抑制/关闭
+  module: issue
+  priority: P0
+  precondition: slow_sql_issue 有 8 条待处理工单
+  related_req: REQ-ISSUE
+  steps:
+  - step: 1
+    action: POST /api/issues/list 查询工单列表
+    expected: 返回 total=8，每行含 fingerprint/priority/trigger_count/first_seen 等字段
+  - step: 2
+    action: 查看工单页状态统计
+    expected: 待处理 8、其余状态 0，行内提供认领/抑制/关闭操作
+  checks:
+  - name: 工单列表共8条
+    request:
+      method: POST
+      path: /api/issues/list
+      body:
+        page: 1
+        page_size: 20
+    expect:
+      status_code: 200
+      json_path: $.data.total
+      equals: 8
+- case_id: FUNC-ISSUE-002
+  run_id: run-20261126-223014
+  title: 慢SQL工单-详情可追溯SQL指纹与触发来源
+  module: issue
+  priority: P1
+  precondition: 工单 id=1 存在
+  related_req: REQ-ISSUE
+  steps:
+  - step: 1
+    action: GET /api/issues/1
+    expected: 返回 id=1、fingerprint、fingerprint_sql、full_sql_sample 等溯源字段
+  checks:
+  - name: 详情含指纹溯源字段
+    request:
+      method: GET
+      path: /api/issues/1
+    expect:
+      status_code: 200
+      json_path: $.data.fingerprint
+      equals: 8c6f2f2b8e27047636f5e4c8f43269a1
+- case_id: FUNC-LLM-001
+  run_id: run-20261126-223014
+  title: LLM配置-密钥掩码返回且可切换默认配置
+  module: llm
+  priority: P0
+  precondition: llm_config 有 2 条配置
+  related_req: REQ-LLM
+  steps:
+  - step: 1
+    action: GET /api/llm/configs
+    expected: 每条含 api_key_masked（如 sk-J****TrJE），不返回明文 api_key
+  - step: 2
+    action: GET /api/llm/configs/default/resolve
+    expected: 返回当前默认配置，provider=internal，供 AI 分析统一取值
+  checks:
+  - name: 密钥掩码返回
+    request:
+      method: GET
+      path: /api/llm/configs
+    expect:
+      status_code: 200
+      json_path: $.data[0].api_key_masked
+      equals: sk-J****TrJE
+  - name: 默认配置provider为internal
+    request:
+      method: GET
+      path: /api/llm/configs/default/resolve
+    expect:
+      status_code: 200
+      json_path: $.data.provider
+      equals: internal
+- case_id: FUNC-DATAWORKS-001
+  run_id: run-20261126-223014
+  title: DataWorks配置-地域字典覆盖常用Region
+  module: dataworks
+  priority: P2
+  precondition: dataworks_instance 为空
+  related_req: REQ-DATAWORKS
+  steps:
+  - step: 1
+    action: GET /api/dataworks/regions
+    expected: 返回 cn-hangzhou 华东1（杭州）等地域选项，顺序稳定
+  - step: 2
+    action: 打开 DataWorks 配置页
+    expected: 列表为空时展示 No Data，新增入口可用
+  checks:
+  - name: 地域字典首项为华东1
+    request:
+      method: GET
+      path: /api/dataworks/regions
+    expect:
+      status_code: 200
+      json_path: $.data[0].label
+      equals: 华东1（杭州）
+- case_id: FUNC-GATEWAY-001
+  run_id: run-20261126-223014
+  title: 网关-SPA回退不吞并 API 404
+  module: gateway
+  priority: P1
+  precondition: 后端已挂载 SPA 回退路由 /{full_path}
+  related_req: REQ-GATEWAY
+  steps:
+  - step: 1
+    action: 请求不存在的 /api/definitely-not-exists
+    expected: '返回 HTTP 404 且 body 为 {"code":404,"msg":"api not found: ..."}，不返回 index.html'
+  - step: 2
+    action: 请求前端路由 /overview
+    expected: 返回 index.html 由前端接管，说明 SPA 回退只对非 api 前缀生效
+  checks:
+  - name: 未知API返回404而非index.html
+    request:
+      method: GET
+      path: /api/definitely-not-exists
+    expect:
+      status_code: 404
+      contains: api not found
+- case_id: FUNC-UI-001
+  run_id: run-20261126-223014
+  title: UI-系统总览渲染健康评分与四张指标卡
+  module: overview
+  priority: P0
+  precondition: 前端已启动且处于登录态
+  related_req: REQ-UI-NAV
+  steps:
+  - step: 1
+    action: 访问 /overview
+    expected: 渲染"系统健康总览"标题与"综合健康评分"卡片，无空白页
+  checks:
+  - name: SPA 路由 /overview 返回入口文档
+    request:
+      method: GET
+      path: /overview
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-002
+  run_id: run-20261126-223014
+  title: UI-退出登录页展示已退出提示
+  module: auth
+  priority: P1
+  precondition: 访问 /login?loggedOut=1
+  related_req: REQ-UI-AUTH
+  steps:
+  - step: 1
+    action: 打开 /login?loggedOut=1
+    expected: 展示"已退出登录""当前已安全退出登录"与"重新登录"按钮
+  checks:
+  - name: SPA 路由 /login?loggedOut=1 返回入口文档
+    request:
+      method: GET
+      path: /login?loggedOut=1
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-003
+  run_id: run-20261126-223014
+  title: UI-历史慢Query页筛选器与表格可用
+  module: slowsql
+  priority: P0
+  precondition: 登录态
+  related_req: REQ-UI-SLOWSQL
+  steps:
+  - step: 1
+    action: 打开 /slowsql
+    expected: 展示"历史慢Query"标题、实例/时间范围/数据库筛选器与"导出CSV"按钮，表格列含 Query ID
+  checks:
+  - name: SPA 路由 /slowsql 返回入口文档
+    request:
+      method: GET
+      path: /slowsql
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-004
+  run_id: run-20261126-223014
+  title: UI-慢SQL总览页渲染统计卡与图表容器
+  module: slowsql
+  priority: P0
+  precondition: 登录态
+  related_req: REQ-UI-SLOWSQL
+  steps:
+  - step: 1
+    action: 打开 /slowsql/overview
+    expected: 渲染慢Query总量/失败数/成功率/平均耗时/P95 与趋势图、指纹TopN、耗时分布区块
+  checks:
+  - name: SPA 路由 /slowsql/overview 返回入口文档
+    request:
+      method: GET
+      path: /slowsql/overview
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-005
+  run_id: run-20261126-223014
+  title: UI-慢SQL工单页展示状态统计
+  module: issue
+  priority: P1
+  precondition: 登录态
+  related_req: REQ-UI-ISSUE
+  steps:
+  - step: 1
+    action: 打开 /issues
+    expected: 展示"慢SQL工单"标题与待处理/已认领/排期中/待验证/已关闭/已抑制六个状态计数
+  checks:
+  - name: SPA 路由 /issues 返回入口文档
+    request:
+      method: GET
+      path: /issues
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-006
+  run_id: run-20261126-223014
+  title: UI-数据库配置页展示数据源与慢SQL来源
+  module: datasource
+  priority: P0
+  precondition: 登录态
+  related_req: REQ-UI-DS
+  steps:
+  - step: 1
+    action: 打开 /datasource
+    expected: 展示 3 条数据源，含"慢SQL来源"列与"新增数据源"入口
+  checks:
+  - name: SPA 路由 /datasource 返回入口文档
+    request:
+      method: GET
+      path: /datasource
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-007
+  run_id: run-20261126-223014
+  title: UI-调用统计页渲染TopN与对账
+  module: mplat
+  priority: P1
+  precondition: 登录态
+  related_req: REQ-UI-MPLAT
+  steps:
+  - step: 1
+    action: 打开 /mplat/stats
+    expected: 展示"调用统计"标题、接口调用TopN与数据对账区块
+  checks:
+  - name: SPA 路由 /mplat/stats 返回入口文档
+    request:
+      method: GET
+      path: /mplat/stats
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-008
+  run_id: run-20261126-223014
+  title: UI-告警中心展示机器人通道
+  module: alert
+  priority: P1
+  precondition: 登录态
+  related_req: REQ-UI-ALERT
+  steps:
+  - step: 1
+    action: 打开 /alert
+    expected: 展示"告警中心"标题与机器人通道列表（含"自测告警"）
+  checks:
+  - name: SPA 路由 /alert 返回入口文档
+    request:
+      method: GET
+      path: /alert
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>
+- case_id: FUNC-UI-009
+  run_id: run-20261126-223014
+  title: UI-LLM配置页密钥掩码展示
+  module: llm
+  priority: P1
+  precondition: 登录态
+  related_req: REQ-UI-LLM
+  steps:
+  - step: 1
+    action: 打开 /llm
+    expected: 展示"LLM 配置中心"与两条配置，API Key 列显示 sk-J**** 掩码
+  checks:
+  - name: SPA 路由 /llm 返回入口文档
+    request:
+      method: GET
+      path: /llm
+    expect:
+      status_code: 200
+      contains: <!DOCTYPE html>

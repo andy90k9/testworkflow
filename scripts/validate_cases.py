@@ -56,13 +56,21 @@ UI_SCHEMA = {
         "press <selector> <key>", "check <selector>", "select <selector> <value>",
         "hover <selector>", "wait <seconds>", "screenshot <name>",
         "expect_url_contains <fragment>", "expect_text <selector> <text>",
-        "expect_visible <selector>", "skill <name> <json_args>",
+        "expect_visible <selector>",
+        "download <trigger_selector> <save_path>", "upload <selector> <path|path>",
+        "popup <trigger_selector>", "accept_dialog <text?>", "dismiss_dialog <text?>",
+        "mouse_click <x,y>", "mouse_move <x,y>", "mouse_wheel <x,y>",
+        "key_press <key>", "type_text <text>", "paste <text>", "insert_text <text>",
+        "reload", "wait_function <expression>", "skill <name> <json_args>",
     ],
 }
 
 SUPPORTED_ACTIONS = {
     "goto", "click", "fill", "press", "check", "select", "hover", "wait",
     "screenshot", "expect_url_contains", "expect_text", "expect_visible",
+    "download", "upload", "popup", "accept_dialog", "dismiss_dialog",
+    "mouse_click", "mouse_move", "mouse_wheel", "key_press", "type_text",
+    "paste", "insert_text", "reload", "wait_function",
 }
 SKILL_WHITELIST = set()
 
