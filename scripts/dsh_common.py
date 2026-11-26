@@ -97,6 +97,7 @@ def ensure_dirs(cfg: dict) -> dict:
         "ui_cases": resolve(cases["ui_dir"]),
         "api_tests": resolve(tests["api_dir"]),
         "ui_tests": resolve(tests["ui_dir"]),
+        "functional_tests": resolve(tests.get("functional_dir", "tests/functional")),
         "records": resolve(cfg["records_dir"]),
         "reports": resolve(cfg["reports_dir"]),
     }

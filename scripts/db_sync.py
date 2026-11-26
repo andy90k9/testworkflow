@@ -247,7 +247,8 @@ def _find_run(records_dir: Path, run_arg: str):
         return None, None, None
     summary = read_json(summary_path)
     details = []
-    for name in ("api-detail.json", "ui-detail.json"):
+    # functional-detail.json 是场景层派生结果，与 api/ui 明细同构，一并回流
+    for name in ("api-detail.json", "ui-detail.json", "functional-detail.json"):
         p = run_dir / name
         if p.exists():
             details.extend(read_json(p))

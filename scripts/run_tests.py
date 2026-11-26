@@ -147,7 +147,7 @@ def _run_suite(kind: str, test_dir: Path, run_dir: Path, env_extra: dict):
 
 def main():
     parser = argparse.ArgumentParser(description="DSH 测试执行编排")
-    parser.add_argument("--only", choices=["api", "ui", "all"], default="all")
+    parser.add_argument("--only", choices=["functional", "api", "ui", "all"], default="all")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -211,6 +211,46 @@ def main():
         write_json(run_dir / "ui-detail.json", ui_detail)
         for key in ("total", "passed", "failed", "skipped", "errors", "duration_sec"):
             summary["overall"][key] += ui_stats[key]
+
+    # ③ 功能（场景层）：有执行器则真实执行；没有则由 API/UI 结果派生
+    if args.only in ("functional", "all"):
+        func_dir = paths.get("functional_tests")
+        has_executor = bool(func_dir) and any(Path(func_dir).glob("test_*.py"))
+        if has_executor:
+            func_stats, func_detail, func_skip, func_rc = _run_suite(
+                "functional", Path(func_dir), run_dir,
+                {**base_env,
+                 "DSH_API_BASE_URL": tests_cfg.get("api_base_url", ""),
+                 "DSH_API_TIMEOUT": str(tests_cfg.get("api_timeout", 15))},
+            )
+            return_codes.append(func_rc)
+            summary["suites"]["functional"] = {"stats": func_stats, "env_skipped": func_skip}
+            for row in func_detail:
+                row["source"] = "executed"
+            write_json(run_dir / "functional-detail.json", func_detail)
+            for key in ("total", "passed", "failed", "skipped", "errors", "duration_sec"):
+                summary["overall"][key] += func_stats[key]
+            print(f"功能（场景层）用例执行: 共 {func_stats['total']} 条 | 通过 {func_stats['passed']} | "
+                  f"失败 {func_stats['failed']} | 跳过 {func_stats['skipped']}")
+        else:
+            try:
+                from case_aggregate import aggregate_functional, load_case_index
+
+                index = load_case_index(paths)
+                api_detail = read_json(run_dir / "api-detail.json") if (run_dir / "api-detail.json").exists() else []
+                ui_detail = read_json(run_dir / "ui-detail.json") if (run_dir / "ui-detail.json").exists() else []
+                functional_detail = aggregate_functional(index, list(api_detail) + list(ui_detail))
+                if functional_detail:
+                    write_json(run_dir / "functional-detail.json", functional_detail)
+                    derived = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+                    for row in functional_detail:
+                        key = {"passed": "passed", "failed": "failed", "errors": "errors"}.get(row["status"], "skipped")
+                        derived[key] += 1
+                    print(f"功能（场景层）无执行器，改为按关联关系派生: 共 {len(functional_detail)} 条 | "
+                          f"通过 {derived['passed']} | 失败 {derived['failed']} | "
+                          f"阻塞 {derived['errors']} | 未执行 {derived['skipped']}")
+            except Exception as exc:  # noqa: BLE001
+                print(f"功能（场景层）聚合跳过: {exc}")
 
     o = summary["overall"]
     if 3 in return_codes:

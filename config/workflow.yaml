@@ -22,6 +22,7 @@ cases:
 tests:
   api_dir: tests/api
   ui_dir: tests/ui
+  functional_dir: tests/functional        # 功能（场景层）执行器；无该目录时退化为按关联关系聚合派生
   api_base_url: http://localhost:8000      # 被测服务接口地址（按需修改）
   ui_base_url: http://localhost:3000       # 被测前端地址（按需修改）
   api_timeout: 15                          # 接口超时（秒）

@@ -27,13 +27,41 @@ def _fmt_sec(sec) -> str:
 
 def _load_details(run_dir: Path) -> list:
     items = []
-    for name in ("api-detail.json", "ui-detail.json"):
+    for name in ("api-detail.json", "ui-detail.json", "functional-detail.json"):
         p = run_dir / name
         if p.exists():
             for it in read_json(p):
                 it["suite"] = it.get("suite") or name.split("-")[0]
                 items.append(it)
     return items
+
+
+def _functional_section(items: list) -> str:
+    """功能（场景层）用例统计：真实执行结果 + 由关联 API/UI 结果派生的状态。"""
+    func_items = [it for it in items if it.get("suite") == "functional"]
+    if not func_items:
+        return ""
+    derived = [it for it in func_items if it.get("source") == "derived"]
+    executed = [it for it in func_items if it.get("source") != "derived"]
+    stats = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0}
+    for it in func_items:
+        key = {"passed": "passed", "failed": "failed", "errors": "errors"}.get(it.get("status"), "skipped")
+        stats[key] += 1
+    lines = [
+        f"共 {len(func_items)} 条功能（场景层）用例：真实执行 {len(executed)} 条，"
+        f"按关联关系派生 {len(derived)} 条（失败 > 部分通过 > 阻塞 > 通过 > 未执行）。",
+        f"统计：通过 {stats['passed']} | 失败 {stats['failed']} | 阻塞 {stats['errors']} | 未执行 {stats['skipped']}",
+        "",
+        "| 功能用例 | 结果 | 来源 | 说明 | 关联用例 |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for it in func_items:
+        msg = (it.get("message") or "").replace("|", "\\|").replace("\n", " ")[:120]
+        related = ", ".join(it.get("related") or []) or "-"
+        source = "派生" if it.get("source") == "derived" else "执行"
+        lines.append(f"| {it.get('case_id')} | {STATUS_CN.get(it.get('status'), it.get('status'))} "
+                     f"| {source} | {msg or '-'} | {related} |")
+    return "\n".join(lines) + "\n"
 
 
 def _suite_table(summary: dict) -> str:
@@ -191,11 +219,20 @@ def main():
     if casepipe.get("enabled"):
         casepipe_section = _casepipe_section(casepipe.get("scenarios") or [],
                                              casepipe.get("scenario_stats") or {})
+
+    numerals = ("三", "四", "五", "六", "七")
+    extra_sections = []
+    functional_section = _functional_section(details)
+    if functional_section:
+        extra_sections.append(("功能（场景层）用例统计", functional_section))
     if casepipe_section:
-        report.extend(["## 三、场景层状态统计（qa-case-pipeline）", "", casepipe_section, ""])
-        num_fail, num_concl = "四", "五"
-    else:
-        num_fail, num_concl = "三", "四"
+        extra_sections.append(("场景层状态统计（qa-case-pipeline）", casepipe_section))
+    index = 0
+    for title, body in extra_sections:
+        report.extend([f"## {numerals[index]}、{title}", "", body, ""])
+        index += 1
+    num_fail = numerals[index]
+    num_concl = numerals[index + 1]
 
     report.extend([f"## {num_fail}、失败用例分析", "", _fail_section(details), "",
                    f"## {num_concl}、结论与建议", ""])
@@ -222,6 +259,7 @@ def main():
         "pass_list": [it for it in details if it.get("status") == "passed"],
         "fail_list": [it for it in details if it.get("status") in ("failed", "errors")],
         "skip_list": [it for it in details if it.get("status") == "skipped"],
+        "functional_list": [it for it in details if it.get("suite") == "functional"],
         "module_distribution": {},
         "qa_pipeline": casepipe,
     }

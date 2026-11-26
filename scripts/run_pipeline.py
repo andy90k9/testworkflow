@@ -53,7 +53,7 @@ def main():
     parser = argparse.ArgumentParser(description="DSH 全自动一键流水线")
     parser.add_argument("--skip-gen", action="store_true", help="跳过 harness 用例生成")
     parser.add_argument("--dry-db", action="store_true", help="入库只演练（dry-run）")
-    parser.add_argument("--only", choices=["api", "ui", "all"], default="all")
+    parser.add_argument("--only", choices=["functional", "api", "ui", "all"], default="all")
     parser.add_argument("--no-db", action="store_true", help="本次不入库")
     args = parser.parse_args()
 

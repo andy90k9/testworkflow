@@ -100,6 +100,7 @@ dsh-workflow/
 │   └── src/                 # ② 放被测代码
 ├── cases/                   # ③ 用例产出区（三类 YAML）
 │   ├── functional/  ├── api/  └── ui/
+├── tests/functional/        # 功能（场景层）执行器：有 checks 才机判，否则显式 skipped
 ├── tests/                   # 数据驱动执行器（无需手改）
 │   ├── api/test_api_cases.py   # 读 cases/api/*.yaml 参数化执行
 │   └── ui/test_ui_cases.py     # Playwright / ego_skill 双模式 UI 执行器
@@ -112,6 +113,8 @@ dsh-workflow/
 │   ├── run_tests.py         # 测试执行编排
 │   ├── make_report.py       # 报告生成（附带场景层聚合与 Excel 回填）
 │   ├── qa_casepipe.py       # qa-toolkit 融合适配层（生成/翻译/回填/聚合）
+│   ├── case_aggregate.py    # 用例关联索引 + 功能（场景层）状态派生
+│   ├── import_external_results.py  # 外部执行结果导入器（把别的通道结果接进本账本）
 │   └── db_sync.py           # MySQL 回流（列映射适配你已有表）
 └── skill/dsh-workflow/      # Loomy Skill 编排层
 ```
@@ -264,6 +267,41 @@ UI DSL 支持 `skill <技能名> <JSON参数>`，真实可用技能来自运行�
 技能名必须在 `skill_whitelist` 中；未知技能会明确失败并提示查看缓存的 usage guide。
 `ego_skill` 模式下整条 UI 用例由 `ego-browser nodejs` 执行，不依赖 Playwright。
 
+## 功能（场景层）用例与外部结果导入
+
+### 功能（场景层）用例不再"只入用例表没有结果"
+
+`cases/functional/` 是场景层用例。此前流水线只执行 API/UI，functional 用例会写进
+`dsh_test_cases` 却没有对应结果行，出现「68 条用例只有 38 条结果」的口径不一致。
+
+现在 `run_tests.py` 支持 functional 执行通道：
+
+- `tests/functional/test_functional_cases.py` 读取用例的 `checks` 字段逐条机判：
+  - `request` 型：真实 HTTP 请求 + `expect`（status_code / json_path / equals / contains）；
+  - `command` 型：执行命令并断言退出码（`expect_exit_code`），适合跑 pytest 单测、curl 冒烟；
+  - 用例未声明 `checks` 时记为 **skipped 并在报告里显式暴露**，绝不把「没有断言」当成「通过」。
+- 没有 functional 执行器时自动降级：由 API/UI 结果按 `related_func` 关联派生场景层状态
+  （失败 > 部分通过 > 阻塞 > 通过 > 未执行），派生结果**不计入 overall 通过率**。
+
+```bash
+python3 scripts/run_tests.py --only functional   # 只跑功能（场景层）
+```
+
+### 外部执行结果导入器
+
+其它执行通道（如 e2e 工具的 `e2e_run_case`）的结果只落在自己的 `report.json` 里，
+既不进 `records/`，也不回流 MySQL。导入器把它们接进本账本：
+
+```bash
+python3 scripts/import_external_results.py \
+    --report /path/to/e2e/report.json --cases /path/to/e2e/cases.json --run <run_id>
+```
+
+- 外部用例库中**尚未进入 `cases/`** 的用例会转成规范 YAML 落到 `cases/functional/`；
+- 外部结果写入 `records/<run_id>/functional-detail.json`（`source=external`），
+  并同步更新 `summary.overall`；
+- 本批次已执行过的用例不会被重复计数（仅当外部结果更差时才覆盖）。
+
 ## MySQL 回流（预留入口，DDL 后续调整）
 
 1. 复制 `config/mysql.example.env` 为 `config/mysql.env`，填入连接信息
@@ -297,6 +335,8 @@ db:
 | `python3 scripts/run_tests.py --only ui` | 只跑 UI 测试（按 ui_mode 走 cdp/local） |
 | `python3 scripts/make_report.py --run run-xxx` | 对指定批次出报告（附带场景层聚合与 Excel 回填） |
 | `python3 scripts/case_gen/harness_adapter.py --dry-run` | 只检查生成引擎配置与前置 |
+| `python3 scripts/run_tests.py --only functional` | 只跑功能（场景层）用例 |
+| `python3 scripts/import_external_results.py --report <report.json> --cases <cases.json> --run <run_id>` | 导入其它通道的执行结果 |
 | `python3 scripts/db_sync.py --dry-run` | 入库演练 |
 | `python3 scripts/db_sync.py --suggest-ddl` | 查看建议建表语句 |
 
