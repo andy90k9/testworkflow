@@ -1,14 +1,15 @@
 ---
 name: dsh-workflow
-version: "1.1.0"
+version: "1.2.0"
 description: >
   DSH 测试工作流编排器。基于工作区代码、需求内容与已启动的 EGO 浏览器（含 Skill 级技能），
-  调用 DeepSeek Harness 生成功能/API/UI 用例，并完成执行、记录、报告、MySQL 回流全链路。
+  调用 DeepSeek Harness（或 qa-toolkit 的 qa-case-pipeline 三层用例引擎）生成功能/API/UI 用例，
+  并完成执行、记录、报告、Excel 状态回填与 MySQL 回流全链路。
   当用户提到 "DSH 工作流"、"跑测试工作流"、"生成测试用例"、"功能用例/API用例/UI用例"、
-  "执行测试出报告"、"测试数据入库回流" 等场景时，即使用户没有明确说 DSH，也应使用本技能。
+  "执行测试出报告"、"测试数据入库回流"、"用例集 Excel 回填" 等场景时，即使用户没有明确说 DSH，也应使用本技能。
 ---
 
-# DSH-Harness 测试工作流插件设计文档（优化版 V1.1）
+# DSH-Harness 测试工作流插件设计文档（优化版 V1.2）
 
 > **安装说明**：本仓库已按 DeepSeek Harness 的 **Bundle 插件**形态补齐 `package.json`、
 > `cordis.patch.yml`、`src/index.ts` 与 `lib/index.js`，同时保留 `skills/dsh-workflow/SKILL.md`
@@ -25,12 +26,19 @@ description: >
 
 | 项目 | 内容 |
 | --- | --- |
-| 文档版本 | V1.1（对齐现有 Python 实现 + 补齐 V1.0 评审缺口） |
+| 文档版本 | V1.2（V1.1 + qa-toolkit / qa-case-pipeline 三层用例集成） |
 | 修订日期 | 2026-11-26 |
 | 文档状态 | 待评审；3 项关键事项待确认（见第 10 节） |
 | 定位 | 面向 DeepSeek Harness 的测试编排插件 |
-| 核心链路 | 生成功能用例 → 生成 API 用例 → 生成 UI 用例 → 执行测试 → 执行记录 → 测试报告 → MySQL 回流 |
+| 核心链路 | 生成功能用例 → 生成 API 用例 → 生成 UI 用例 → 执行测试 → 执行记录 → 测试报告（含场景层聚合与 Excel 回填）→ MySQL 回流 |
 | 批次标识 | `run_id` 贯穿全部产物与库表 |
+
+> **相对 V1.1 的修订点**
+> 1. 新增 **qa-case-pipeline** 用例生成引擎（`harness.provider: qa_casepipe`），产出场景/接口/UI 三层用例。
+> 2. 新增 qa-toolkit 状态回填：执行明细 → Excel「执行状态」列 + COUNTIF 统计 + 场景层聚合。
+> 3. 报告新增「场景层状态统计」章节，结构化报告新增 `qa_pipeline` 字段。
+> 4. 插件读取宿主注入的 `ctx.qaCasepipe`（`dsh-qa-casepipe` 插件提供），把脚本目录透传给 Python 脚本。
+> 5. 预检新增 qa_casepipe 检查项（spec 存在性、scripts 可达性），缺一即阻塞。
 
 > **相对 V1.0 的修订点**
 > 1. 删除原文第 3 行孤立的“表格”。
@@ -52,6 +60,8 @@ description: >
 外部能力通过 `config/providers.yaml` 接入：
 
 - **DeepSeek Harness**：用例生成引擎，支持 command / HTTP 两种调用形态。
+- **qa-toolkit（qa-case-pipeline）**：三层用例引擎（场景 / 接口 / UI），产出 Markdown + Excel 用例集，
+  并在执行后回填状态、聚合场景层结论；也可只作为「回填器」与 Harness 共存。
 - **EGO 浏览器**：UI 用例通过 CDP 直接跑在用户已打开的会话里（保留登录态），并可调用 Skill 级技能。
 - **MySQL**：过程数据回流，列映射配置适配用户已有表结构（DDL 后续再调）。
 
@@ -68,14 +78,17 @@ description: >
 3. 检查 Python 依赖：`PyYAML requests pytest playwright`。缺失先安装；`local` 模式另需
    `playwright install chromium`。
 4. 检查 `harness.enabled` 与 `ui_mode`；若为 `ego_skill`，确认 `ego-browser` 命令存在且 usage guide 可刷新。
+5. 若 `harness.provider: qa_casepipe` 或 `qa_casepipe.enabled: true`，确认 spec 文件存在、
+   qa-case-pipeline 的 `gen_cases.py` / `fill_status.py` 可达（缺一即阻塞）。
 
 ### 2.4 只读预检与工作流步骤计划（新增）
 
 一旦确认用户要做“全链路测试”，必须先执行只读预检，再生成步骤计划并让用户确认，**确认前不得启动浏览器、登录或写库**。
 
 - 实现：`scripts/preflight.py`，只读输出 `{ ok, blockers, warnings, checks, plan }`。
-- 检查项：需求/代码目录、用例数量、Harness 接入、EGO CLI 与指南、Python 依赖、UI 模式、MySQL env 与列映射。
-- 步骤计划：准备目标系统 → 生成三类用例 → 格式校验 → 执行 API/UI → 生成报告 → MySQL 回流。
+- 检查项：需求/代码目录、用例数量、生成引擎接入（harness / qa_casepipe）、EGO CLI 与指南、
+  Python 依赖、UI 模式、MySQL env 与列映射。
+- 步骤计划：准备目标系统 → 生成三类用例 → 格式校验 → 执行 API/UI → 生成报告 →（可选）Excel 状态回填 → MySQL 回流。
 - 用户确认：通过 `ctx.userQuestions.ask()` 展示计划并提供 `开始执行 / 取消`；
   没有弹窗服务时返回计划并要求带 `confirmed=true` 重新调用。
 - 阻塞项处理：存在 blocker 时直接返回，不进入任何执行阶段。
@@ -112,6 +125,10 @@ flowchart LR
     H[DeepSeek Harness<br/>command / HTTP] --> F[cases/functional]
     H --> G[cases/api]
     H --> E[cases/ui]
+    Q[qa-case-pipeline<br/>场景/接口/UI 三层] --> F
+    Q --> G
+    Q --> E
+    Q --> XL[(qa-cases.md / .xlsx)]
     F --> V[validate_cases<br/>Schema 校验]
     G --> V
     E --> V
@@ -119,6 +136,8 @@ flowchart LR
     EG[EGO 浏览器<br/>CDP + Skill API] -.接管/调用.- R
     R --> S[records/run-<run_id>/<br/>junitxml / detail / summary]
     S --> P[make_report<br/>JSON + Markdown/HTML]
+    P --> FS[fill_status.py<br/>Excel 回填 + 场景层聚合]
+    FS --> XL
     P --> DB[db_sync<br/>列映射适配]
     S --> DB
     DB --> M[(MySQL 库表)]
@@ -173,6 +192,16 @@ flowchart LR
 - `reports/report-<run_id>.md`：人读报告。
 - `reports/report-<run_id>.json`：结构化报告，字段对齐第 7 节 `TestReport`。
 - `reports/report-<run_id>.html`：可选，供评审预览。
+- `qa_casepipe.enabled: true` 时额外产出：Markdown「场景层状态统计」章节 +
+  JSON 的 `qa_pipeline` 字段（场景级结论与回填结果）。
+
+### 4.8 用例集状态回填与场景层聚合（qa_casepipe.enabled: true）
+
+- 执行明细 → qa-case-pipeline 状态词表：`passed→通过`、`failed→失败`、`errors→阻塞`、`skipped→未执行`，
+  结果写入 `records/<run_id>/qa-casepipe-results.json`。
+- 调用 `fill_status.py`：先回填 UI 层工作表，再回填接口层工作表并按 `related` 关系聚合场景层
+  （失败 > 部分通过 > 阻塞 > 通过 > 未执行），同时在「统计与说明」工作表写 COUNTIF 统计。
+- 回填失败不阻断流水线：报告里标注「状态回填未完成」并保留原因。
 
 ### 4.7 数据回流 MySQL
 
@@ -266,6 +295,56 @@ EOF
 - 写入 `records/current-run.json`，并注入三类用例 YAML 的 `run_id` 字段。
 - 执行、报告、入库阶段一律读取该值，不再各自重新生成。
 
+### 5.4 qa-case-pipeline 契约
+
+配置（`config/providers.yaml`）：
+
+```yaml
+harness:
+  enabled: true
+  provider: qa_casepipe        # harness | qa_casepipe
+qa_casepipe:
+  enabled: true
+  spec: project/requirements/qa-spec.json
+  scripts_dir: ""              # 留空自动探测
+  outputs:
+    md: reports/qa-cases.md
+    xlsx: reports/qa-cases.xlsx
+  sheets:
+    scenario: 核心链路用例
+    api: API接口用例
+    ui: UI用例(Playwright)
+```
+
+spec 结构（`qa-toolkit/skill/qa-case-pipeline/scripts/spec.example.json` 为样例）：
+
+```json
+{
+  "meta": {"title": "...", "version": "v1.0", "env": "...", "base": "https://host/api"},
+  "scenarios": [{"id": "TC-AUTH-001", "chain": "A 登录与会话", "name": "...", "priority": "P0",
+                 "precondition": "...", "steps": "...", "expected": "...",
+                 "related": ["TC-API-005", "TC-UI-001"]}],
+  "api": [{"id": "TC-API-005", "related": "TC-AUTH-001", "module": "权限", "name": "...",
+           "method": "POST", "url": "{base}/rbac/runtime/context", "headers": "Accept: application/json",
+           "body": "无请求体", "expect": "...", "negative": "...", "priority": "P0",
+           "assert": {"status": 200, "code": 0, "dataKeys": ["permissions"]}}],
+  "ui": [{"id": "TC-UI-001", "related": "TC-AUTH-001", "module": "登录", "name": "...",
+          "precondition_ui": "无", "steps_playwright": "await page.goto(`${BASE}/#/x`);", "expected": "..."}]
+}
+```
+
+转换规则：
+
+| spec 层 | DSH 用例 | 关键映射 |
+| --- | --- | --- |
+| `scenarios` | `cases/functional/qa-pipeline.functional.yaml` | `steps` 文本化，`related` → `related_req` |
+| `api` | `cases/api/qa-pipeline.api.yaml` | `assert.status`→`expect.status_code`、`assert.code`→`expect.json_path=$.code`+`equals`、`url` 去掉 base 前缀、`{{token}}`/`{{clientId}}` 占位符由环境变量替换 |
+| `ui` | `cases/ui/qa-pipeline.ui.yaml` | Playwright 片段保守翻译为 EGO DSL；无法翻译的断言写进 `notes` 并在日志提示 |
+
+脚本定位顺序：`qa_casepipe.scripts_dir` → `DSH_QACASEPIPE_DIR`（由插件从 `ctx.qaCasepipe.skillDir` 注入）
+→ `node_modules/dsh-qa-casepipe/assets/qa-case-pipeline/scripts` → 同级 `../qa-toolkit/skill/qa-case-pipeline/scripts`
+→ `~/.dsh/profiles/*/node_modules/dsh-qa-casepipe/assets/qa-case-pipeline/scripts`。
+
 ---
 
 ## 6. 配置与用例 Schema
@@ -300,6 +379,23 @@ db:
     case_result_table: dsh_case_results
     report_table: dsh_test_reports
   columns: {}
+```
+
+`config/providers.yaml` 额外承载外部接入：
+
+```yaml
+harness:
+  enabled: true
+  provider: qa_casepipe      # harness | qa_casepipe
+  mode: command               # command | http
+qa_casepipe:
+  enabled: true
+  spec: project/requirements/qa-spec.json
+  scripts_dir: ""
+  outputs: {md: reports/qa-cases.md, xlsx: reports/qa-cases.xlsx}
+ego_browser:
+  cli_path: ego-browser
+  skill_whitelist: [snapshot, capture, screenshot, evaluate, extract, fetch, cdp, wait_for, handoff]
 ```
 
 > 运行时以 `workflow.yaml → tests.ui_cdp_endpoint` 为准，需与 `providers.yaml` 保持一致；
@@ -525,10 +621,10 @@ dsh-workflow/
 ├─ project/               # requirements/ 与 src/（前置输入）
 ├─ cases/                 # functional/ api/ ui/ 三类用例 YAML
 ├─ tests/                 # api/ 与 ui/ 数据驱动执行器
-├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter
+├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe
 ├─ skill/dsh-workflow/    # 对话式编排 Skill（本文件评审通过后替换此目录下的 SKILL.md）
 ├─ records/               # current-run.json / run-<run_id>/ / screenshots/
-├─ reports/               # report-<run_id>.md / .json / .html
+├─ reports/               # report-<run_id>.md / .json / .html + qa-cases.md / .xlsx
 └─ requirements.txt
 ```
 
@@ -539,10 +635,10 @@ dsh-workflow/
 | 一键全自动 | `python3 scripts/run_pipeline.py` |
 | 跳过生成 | `python3 scripts/run_pipeline.py --skip-gen` |
 | 只跑 API/UI | `python3 scripts/run_pipeline.py --only api\|ui` |
-| 单步生成 | `python3 scripts/case_gen/harness_adapter.py` |
+| 单步生成 | `python3 scripts/case_gen/harness_adapter.py`（`--dry-run` 只查配置） |
 | 单步校验 | `python3 scripts/validate_cases.py [--type functional\|api\|ui]` |
 | 单步执行 | `python3 scripts/run_tests.py --only api\|ui` |
-| 单步报告 | `python3 scripts/make_report.py --run <run_id>` |
+| 单步报告 | `python3 scripts/make_report.py --run <run_id>`（含场景层聚合与 Excel 回填） |
 | 单步入库 | `python3 scripts/db_sync.py --dry-run` / `--suggest-ddl` |
 
 ---
@@ -564,6 +660,8 @@ dsh-workflow/
 
 - [ ] `project/requirements/` 与 `project/src/` 放入真实输入，前置检查通过。
 - [ ] `harness.enabled: true`，成功产出三类用例并通过 Schema 校验。
+- [ ] （可选）`harness.provider: qa_casepipe` 时三层用例落到 `cases/`，Excel/Markdown 用例集已生成。
+- [ ] （可选）`qa_casepipe.enabled: true` 时 Excel 回填成功，场景层状态统计与用例明细一致。
 - [ ] EGO Skill 已安装；`ui_mode: ego_skill` 下 `ego-browser skill` 指南可刷新，至少一条 `skill` 动作真实执行成功。
 - [ ] 一次 `run_id` 贯穿用例、记录、报告、库表，无中途重新生成。
 - [ ] API 与 UI 用例均实际执行，`records/run-<run_id>/` 下有完整明细。

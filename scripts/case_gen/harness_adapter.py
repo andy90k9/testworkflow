@@ -7,6 +7,9 @@
 3. 清理旧用例后分发产物到 cases/（保留 example.*.yaml）
 4. 调用 validate_cases.py 做格式校验
 
+也支持 provider: qa_casepipe —— 改由 qa-toolkit（qa-case-pipeline）生成三层用例，
+产物同样落到 cases/functional|api/ui，并附带 Markdown + Excel 用例集。
+
 用法:
   python3 scripts/case_gen/harness_adapter.py            # 调用 harness 生成并分发
   python3 scripts/case_gen/harness_adapter.py --dry-run  # 只检查配置与前置
@@ -23,12 +26,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dsh_common import (  # noqa: E402
     load_config, load_providers, ensure_dirs, init_run_id,
-    inject_run_id_into_cases, WORKFLOW_ROOT,
+    inject_run_id_into_cases, resolve, WORKFLOW_ROOT,
 )
+import qa_casepipe  # noqa: E402
 
 PROVIDERS_PATH = WORKFLOW_ROOT / "config" / "providers.yaml"
 CASE_TYPES = ("functional", "api", "ui")
 CASE_DIR_KEYS = {"functional": "functional", "api": "api_cases", "ui": "ui_cases"}
+PROVIDERS = ("harness", "qa_casepipe")
 
 
 def _harness_output_dir(harness: dict) -> Path:
@@ -121,6 +126,51 @@ def _distribute(out_dir: Path, paths: dict) -> dict:
     return stats
 
 
+def _validate_cases() -> None:
+    """调用 validate_cases.py 做格式校验，不通过直接中止。"""
+    print("▶ 用例格式校验 ...")
+    proc = subprocess.run([sys.executable, str(WORKFLOW_ROOT / "scripts" / "validate_cases.py")],
+                          capture_output=True, text=True)
+    print((proc.stdout or "").strip())
+    if proc.returncode != 0:
+        print("校验不通过，请修正用例后重新执行（或让生成引擎修正输出格式）")
+        raise SystemExit(1)
+
+
+def _generate_by_qa_casepipe(providers: dict, paths: dict, run_id: str) -> dict:
+    """由 qa-toolkit（qa-case-pipeline）生成三层用例并落到 cases/。"""
+    pipe = qa_casepipe.casepipe_config(providers)
+    if not pipe["spec"]:
+        raise SystemExit("providers.yaml -> qa_casepipe.spec 未配置（qa-case-pipeline spec 路径）")
+    spec_path = resolve(pipe["spec"])
+    if not spec_path.exists():
+        raise SystemExit(f"qa-case-pipeline spec 不存在: {spec_path}")
+
+    scripts_dir = qa_casepipe.find_scripts_dir(pipe["scripts_dir"])
+    if not scripts_dir:
+        raise SystemExit("未找到 qa-case-pipeline scripts 目录（gen_cases.py / fill_status.py）")
+    print(f"▶ qa-case-pipeline scripts: {scripts_dir}")
+
+    md_path = resolve(pipe["md"])
+    xlsx_path = resolve(pipe["xlsx"])
+    md_path.parent.mkdir(parents=True, exist_ok=True)
+    xlsx_path.parent.mkdir(parents=True, exist_ok=True)
+
+    gen = qa_casepipe.generate(spec_path, md_path, xlsx_path, pipe["scripts_dir"])
+    if not gen.get("ok"):
+        print("gen_cases.py 执行失败：")
+        print((gen.get("stderr") or gen.get("stdout") or "")[-1500:])
+        raise SystemExit(1)
+    print(f"用例集已生成: {md_path} | {xlsx_path}")
+
+    stats = qa_casepipe.spec_to_cases(spec_path, paths["functional"], paths["api_cases"],
+                                       paths["ui_cases"], run_id)
+    for note in stats.get("notes") or []:
+        print(f"[翻译提示] {note}")
+    print(f"分发完成: 功能 {stats['functional']} | API {stats['api']} | UI {stats['ui']}")
+    return stats
+
+
 def main():
     parser = argparse.ArgumentParser(description="DeepSeek Harness 用例生成适配层")
     parser.add_argument("--dry-run", action="store_true", help="只检查配置与前置，不实际调用")
@@ -128,7 +178,8 @@ def main():
 
     cfg = load_config()
     paths = ensure_dirs(cfg)
-    harness = load_providers().get("harness") or {}
+    providers = load_providers()
+    harness = providers.get("harness") or {}
 
     for problem in _check_prerequisites(paths):
         print(f"[前置缺失] {problem}")
@@ -138,15 +189,34 @@ def main():
         print("如需启用，请在 config/providers.yaml 填写 harness 段并把 enabled 改为 true")
         return
 
+    provider = str(harness.get("provider") or "harness").strip().lower()
+    if provider not in PROVIDERS:
+        print(f"harness.provider 取值非法: {provider}（应为 {' | '.join(PROVIDERS)}）")
+        raise SystemExit(1)
+
     mode = harness.get("mode", "command")
-    if mode not in ("command", "http"):
+    if provider == "harness" and mode not in ("command", "http"):
         print(f"harness.mode 取值非法: {mode}（应为 command | http）")
         raise SystemExit(1)
 
     run_id = init_run_id()
     out_dir = _harness_output_dir(harness)
     if args.dry_run:
-        print(f"dry-run 通过: mode={mode} run_id={run_id} 产物落点={out_dir}")
+        print(f"dry-run 通过: provider={provider} mode={mode} run_id={run_id} 产物落点={out_dir}")
+        if provider == "qa_casepipe":
+            pipe = qa_casepipe.casepipe_config(providers)
+            spec_path = resolve(pipe["spec"]) if pipe["spec"] else None
+            print(f"  spec: {spec_path}（存在={bool(spec_path and spec_path.exists())}）")
+            print(f"  scripts: {qa_casepipe.find_scripts_dir(pipe['scripts_dir']) or '未找到'}")
+        return
+
+    if (cfg.get("execute") or {}).get("cleanup_cases_before_gen", True):
+        _cleanup_old_cases(paths)
+
+    if provider == "qa_casepipe":
+        _generate_by_qa_casepipe(providers, paths, run_id)
+        inject_run_id_into_cases(cfg, paths, run_id)
+        _validate_cases()
         return
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -155,8 +225,6 @@ def main():
     else:
         _call_http(harness, out_dir, paths, run_id)
 
-    if (cfg.get("execute") or {}).get("cleanup_cases_before_gen", True):
-        _cleanup_old_cases(paths)
     stats = _distribute(out_dir, paths)
     total = sum(stats.values())
     if total == 0:
@@ -166,13 +234,7 @@ def main():
     inject_run_id_into_cases(cfg, paths, run_id)
     print(f"分发完成: 功能 {stats['functional']} | API {stats['api']} | UI {stats['ui']}（共 {total} 个文件）")
 
-    print("▶ 用例格式校验 ...")
-    proc = subprocess.run([sys.executable, str(WORKFLOW_ROOT / "scripts" / "validate_cases.py")],
-                          capture_output=True, text=True)
-    print((proc.stdout or "").strip())
-    if proc.returncode != 0:
-        print("校验不通过，请修正用例后重新执行（或让 harness 修正输出格式）")
-        raise SystemExit(1)
+    _validate_cases()
 
 
 if __name__ == "__main__":

@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dsh_common import load_config, ensure_dirs, read_json, write_json  # noqa: E402
+from dsh_common import load_config, load_providers, ensure_dirs, read_json, resolve, write_json  # noqa: E402
+import qa_casepipe  # noqa: E402
 
 STATUS_CN = {"passed": "通过", "failed": "失败", "errors": "错误", "skipped": "跳过"}
 
@@ -84,6 +85,54 @@ def _fail_section(items: list) -> str:
     return "\n".join(lines)
 
 
+def _casepipe_section(rows: list, stats: dict) -> str:
+    """场景层状态统计（qa-case-pipeline 三层用例的场景聚合）。"""
+    if not rows:
+        return ""
+    summary = " | ".join(f"{status} {stats.get(status, 0)}" for status in qa_casepipe.SCENARIO_PRIORITY)
+    lines = [f"状态统计：{summary}", "",
+             "| 场景用例 | 链路 | 用例名 | 优先级 | 状态 | 说明 |",
+             "| --- | --- | --- | --- | --- | --- |"]
+    for row in rows:
+        lines.append(
+            f"| {row.get('id')} | {row.get('chain') or '-'} | {row.get('name') or '-'} "
+            f"| {row.get('priority') or '-'} | {row.get('status')} | {row.get('detail') or '-'} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _casepipe_data(providers: dict, details: list, run_dir: Path, env: str) -> dict:
+    """汇总 qa-case-pipeline 场景层状态，并把执行结果回填进 Excel。"""
+    pipe = qa_casepipe.casepipe_config(providers)
+    data = {"enabled": False}
+    if not pipe["enabled"]:
+        return data
+    if not pipe["spec"]:
+        return {"enabled": False, "error": "qa_casepipe.spec 未配置"}
+    spec_path = resolve(pipe["spec"])
+    if not spec_path.exists():
+        return {"enabled": False, "error": f"qa-case-pipeline spec 不存在: {spec_path}"}
+
+    spec = qa_casepipe.load_spec(spec_path)
+    rows = qa_casepipe.aggregate_scenarios(spec, details)
+    stats = qa_casepipe.scenario_stats(rows)
+    xlsx_path = resolve(pipe["xlsx"])
+    data = {
+        "enabled": True,
+        "spec": str(spec_path),
+        "md": str(resolve(pipe["md"])),
+        "xlsx": str(xlsx_path),
+        "scenarios": rows,
+        "scenario_stats": stats,
+        "fill": {},
+    }
+    if xlsx_path.exists():
+        data["fill"] = qa_casepipe.fill_back(xlsx_path, details, run_dir, env=env, sheets=pipe["sheets"])
+    else:
+        data["fill"] = {"ok": False, "error": f"Excel 不存在: {xlsx_path}"}
+    return data
+
+
 def main():
     parser = argparse.ArgumentParser(description="DSH 测试报告生成")
     parser.add_argument("--run", help="指定 run_id，如 run-20261126-153000；缺省取最近一次")
@@ -110,6 +159,10 @@ def main():
     o = summary["overall"]
     details = _load_details(run_dir)
 
+    providers = load_providers()
+    env = str(summary.get("config", {}).get("api_base_url") or "")
+    casepipe = _casepipe_data(providers, details, run_dir, env)
+
     total = o["total"] or 1
     pass_rate = f"{o['passed'] / total * 100:.1f}%"
 
@@ -133,13 +186,29 @@ def main():
         section = _detail_section(kind, details)
         if section:
             report.append(section)
-    report.extend(["## 三、失败用例分析", "", _fail_section(details), "",
-                   "## 四、结论与建议", ""])
+
+    casepipe_section = ""
+    if casepipe.get("enabled"):
+        casepipe_section = _casepipe_section(casepipe.get("scenarios") or [],
+                                             casepipe.get("scenario_stats") or {})
+    if casepipe_section:
+        report.extend(["## 三、场景层状态统计（qa-case-pipeline）", "", casepipe_section, ""])
+        num_fail, num_concl = "四", "五"
+    else:
+        num_fail, num_concl = "三", "四"
+
+    report.extend([f"## {num_fail}、失败用例分析", "", _fail_section(details), "",
+                   f"## {num_concl}、结论与建议", ""])
     if o["failed"] + o["errors"] == 0:
         report.append("本次执行全部通过，可进入发布评估环节。")
     else:
         report.append(f"本次执行存在 {o['failed'] + o['errors']} 个失败/错误用例，"
                       f"建议优先排查 P0/P1 用例，并核对失败明细中的报错信息。")
+    if casepipe.get("enabled"):
+        fill = casepipe.get("fill") or {}
+        state = "成功" if fill.get("ok") else f"未完成（{(fill.get('error') or '未知原因')[:200]}）"
+        report.append(f"- qa-toolkit 状态回填：{state}，产物 {casepipe.get('xlsx')}")
+        report.append(f"- 场景层统计：{json.dumps(casepipe.get('scenario_stats') or {}, ensure_ascii=False)}")
     report.append("")
 
     run_id = summary["run_id"]
@@ -154,6 +223,7 @@ def main():
         "fail_list": [it for it in details if it.get("status") in ("failed", "errors")],
         "skip_list": [it for it in details if it.get("status") == "skipped"],
         "module_distribution": {},
+        "qa_pipeline": casepipe,
     }
     json_path = paths["reports"] / f"report-{run_id}.json"
     write_json(json_path, structured)
@@ -164,6 +234,12 @@ def main():
     print(f"测试报告已生成: {report_path}")
     print(f"结构化报告已生成: {json_path}")
     print(f"  通过率 {pass_rate}（{o['passed']}/{o['total']}）")
+    if casepipe.get("enabled"):
+        fill = casepipe.get("fill") or {}
+        if fill.get("ok"):
+            print(f"  qa-toolkit 状态回填成功: {casepipe.get('xlsx')}")
+        else:
+            print(f"  qa-toolkit 状态回填未完成: {(fill.get('error') or '未知原因')[:200]}")
 
 
 if __name__ == "__main__":

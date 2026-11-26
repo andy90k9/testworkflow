@@ -3,8 +3,10 @@
 基于工作区代码与需求内容的一站式全自动测试工作流：
 **功能用例 → API 用例 → UI 用例 → 执行测试 → 执行记录 → 测试报告 → 过程数据回流 MySQL**
 
-- 用例生成引擎：**DeepSeek Harness**（对接已有项目，配置入口 `config/providers.yaml`）
+- 用例生成引擎：**DeepSeek Harness**（对接已有项目，配置入口 `config/providers.yaml`），
+  也可切换为 **qa-toolkit / qa-case-pipeline**（三层用例：场景 / 接口 / UI）
 - UI 执行通道：**CDP 接管**、独立 Playwright 实例，或 **ego-browser Skill（CLI + JS）**
+- 用例集产物：**Markdown + Excel 三层用例集**，执行后自动回填状态并聚合场景层结论
 - MySQL 回流：**预留配置入口**，等 DDL 后只改映射配置，不改代码
 
 ## 安装到 DeepSeek Harness
@@ -55,6 +57,9 @@ flowchart LR
     H[DeepSeek Harness<br/>用例生成引擎<br/>providers.yaml 接入] --> F[cases/functional]
     H --> G[cases/api]
     H --> E[cases/ui]
+    Q[qa-case-pipeline<br/>三层用例引擎<br/>Markdown + Excel] --> F
+    Q --> G
+    Q --> E
     F --> V[validate_cases<br/>格式校验]
     G --> V
     E --> V
@@ -63,6 +68,8 @@ flowchart LR
     R --> S[records/run-*<br/>执行记录]
     S --> P[make_report<br/>测试报告]
     P --> T[reports/report-*.md]
+    S --> X[fill_status.py<br/>Excel 状态回填<br/>场景层聚合]
+    X --> XLSX[(reports/qa-cases.xlsx)]
     S --> DB[db_sync<br/>列映射适配]
     P --> DB
     DB --> M[(MySQL 库表<br/>DDL 后续调整)]
@@ -98,11 +105,13 @@ dsh-workflow/
 │   └── ui/test_ui_cases.py     # Playwright / ego_skill 双模式 UI 执行器
 ├── records/<run_id>/         # ④⑤ 执行记录（junitxml/日志/summary/明细/runtime）
 ├── reports/report-<run_id>.md / .json # ⑥ 测试报告
+├── reports/qa-cases.md / .xlsx        # qa-toolkit 三层用例集（生成 + 状态回填）
 ├── scripts/
 │   ├── dsh_common.py        # 公共工具
 │   ├── validate_cases.py    # 用例格式校验
 │   ├── run_tests.py         # 测试执行编排
-│   ├── make_report.py       # 报告生成
+│   ├── make_report.py       # 报告生成（附带场景层聚合与 Excel 回填）
+│   ├── qa_casepipe.py       # qa-toolkit 融合适配层（生成/翻译/回填/聚合）
 │   └── db_sync.py           # MySQL 回流（列映射适配你已有表）
 └── skill/dsh-workflow/      # Loomy Skill 编排层
 ```
@@ -152,6 +161,74 @@ harness:
 ```
 
 **产物约定**（适配层自动分发到 cases/ 并校验格式）：`{output}/functional/*.yaml`、`{output}/api/*.yaml`、`{output}/ui/*.yaml`。
+
+## 集成 qa-toolkit（qa-case-pipeline 三层用例流水线）
+
+`qa-toolkit`（插件包 `dsh-qa-casepipe`）提供的是**三层用例方法论 + 一套可复用脚本**：
+
+| 层 | 内容 | qa-toolkit 产物 | DSH 侧落点 |
+| --- | --- | --- | --- |
+| 场景层 | 核心链路用例（编号/链路/步骤/预期） | Excel `核心链路用例` | `cases/functional/qa-pipeline.functional.yaml` |
+| 接口层 | 接口用例（方法/URL/请求体/断言） | Excel `API接口用例` | `cases/api/qa-pipeline.api.yaml` |
+| UI 层 | Playwright 步骤用例 | Excel `UI用例(Playwright)` | `cases/ui/qa-pipeline.ui.yaml` |
+
+### 1. 作为用例生成引擎（provider: qa_casepipe）
+
+把 `config/providers.yaml → harness.provider` 改成 `qa_casepipe`，生成阶段就由 qa-case-pipeline 承担：
+
+```yaml
+harness:
+  enabled: true
+  provider: qa_casepipe      # harness | qa_casepipe
+
+qa_casepipe:
+  enabled: true
+  spec: project/requirements/qa-spec.json     # spec JSON（meta/scenarios/api/ui）
+  scripts_dir: ""                              # 留空自动探测
+  outputs:
+    md: reports/qa-cases.md
+    xlsx: reports/qa-cases.xlsx
+  sheets:
+    scenario: 核心链路用例
+    api: API接口用例
+    ui: UI用例(Playwright)
+```
+
+流程：
+
+1. `gen_cases.py` 把 spec 渲染成 `reports/qa-cases.md` + `reports/qa-cases.xlsx`（三层工作表）；
+2. 同一份 spec 再转成 `cases/functional|api|ui/*.yaml`，交给原有校验器与执行器；
+3. UI 层的 Playwright 片段做**保守翻译**为 EGO DSL（`getByTestId` → `loc=css:[data-testid=…]`、
+   `getByRole` → `loc=role:…[name="…"]`、`goto/fill/toHaveText` 等），翻译不了的断言会以
+   `notes` 写进用例并在生成日志里提示，不会静默丢弃；
+4. `validate_cases.py` 继续校验三类用例，通过后进入执行阶段。
+
+脚本目录探测顺序：`qa_casepipe.scripts_dir` → 环境变量 `DSH_QACASEPIPE_DIR` →
+`node_modules/dsh-qa-casepipe/...` → 同级 `../qa-toolkit/skill/qa-case-pipeline/scripts` →
+`~/.dsh/profiles/*/node_modules/dsh-qa-casepipe/...`。
+
+### 2. 作为状态回填与场景层聚合（qa_casepipe.enabled）
+
+报告阶段（`scripts/make_report.py`）会自动：
+
+- 把执行明细映射成 qa-case-pipeline 状态词表（`通过 / 部分通过 / 阻塞 / 未执行 / 失败`），
+  写入 `records/<run_id>/qa-casepipe-results.json`；
+- 调用 `fill_status.py` 回填 Excel：先写 UI 层，再写接口层并**按 related 关系聚合场景层**
+  （失败 > 部分通过 > 阻塞 > 通过 > 未执行），同时生成 `统计与说明` 工作表的 COUNTIF 统计；
+- 在 Markdown 报告里新增「场景层状态统计」章节，并在结构化报告的 `qa_pipeline` 字段中给出
+  场景级结论与回填结果。
+
+### 3. 插件间协作
+
+`dsh-qa-casepipe` 插件向宿主提供 `ctx.qaCasepipe`（含 `skillDir` / `assetsDir`）。
+本插件在启动时读取该服务，把它的 `scripts` 目录通过 `DSH_QACASEPIPE_DIR` 传给全部 Python 脚本；
+若未安装该插件，则退回自动探测或插件配置 `casepipeDir`：
+
+```yaml
+# cordis.patch.yml
+config:
+  casepipeDir: ""   # 留空则用 ctx.qaCasepipe.skillDir，再留空则自动探测
+```
 
 ## EGO 浏览器两种执行模式
 
@@ -218,7 +295,8 @@ db:
 | `python3 scripts/validate_cases.py` | 校验三类用例格式 |
 | `python3 scripts/run_tests.py --only api` | 只跑接口测试 |
 | `python3 scripts/run_tests.py --only ui` | 只跑 UI 测试（按 ui_mode 走 cdp/local） |
-| `python3 scripts/make_report.py --run run-xxx` | 对指定批次出报告 |
+| `python3 scripts/make_report.py --run run-xxx` | 对指定批次出报告（附带场景层聚合与 Excel 回填） |
+| `python3 scripts/case_gen/harness_adapter.py --dry-run` | 只检查生成引擎配置与前置 |
 | `python3 scripts/db_sync.py --dry-run` | 入库演练 |
 | `python3 scripts/db_sync.py --suggest-ddl` | 查看建议建表语句 |
 

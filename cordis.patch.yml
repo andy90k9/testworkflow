@@ -8,3 +8,4 @@
         workflowDir: ""
         timeoutSec: 3600
         autoLogin: true
+        casepipeDir: ""   # qa-case-pipeline scripts 目录；留空则自动探测或用 ctx.qaCasepipe

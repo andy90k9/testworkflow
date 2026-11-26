@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dsh_common import load_config, load_providers, resolve, collect_yaml_files  # noqa: E402
 from ego_client import guide_version  # noqa: E402
+import qa_casepipe  # noqa: E402
 
 
 def _count_files(path: Path) -> int:
@@ -55,13 +56,14 @@ def build_plan(cfg: dict, checks: dict, only: str, skip_gen: bool) -> list:
     add("prepare-target", "准备被测系统", "启动 EGO、打开被测链接，尽力 SSO 登录；失败则交还用户手动登录", ["preflight"])
 
     harness = checks["harness"]
+    generator = "qa-case-pipeline" if harness["provider"] == "qa_casepipe" else "Harness"
     if skip_gen or not harness["enabled"]:
         for sid, title in (("gen-functional", "功能用例"), ("gen-api", "API 用例"), ("gen-ui", "UI 用例")):
-            add(sid, title + "（跳过）", "不调用 Harness，使用 cases/ 中现有用例", ["prepare-target"], "跳过")
+            add(sid, title + "（跳过）", "不调用生成引擎，使用 cases/ 中现有用例", ["prepare-target"], "跳过")
     else:
-        add("gen-functional", "生成功能用例", "Harness 基于需求与代码生成 cases/functional/", ["prepare-target"])
-        add("gen-api", "生成 API 用例", "Harness 生成 cases/api/，绑定 related_func", ["gen-functional"])
-        add("gen-ui", "生成 UI 用例", "Harness 生成 cases/ui/，绑定 related_func 并可用 skill 动作", ["gen-functional"])
+        add("gen-functional", "生成功能用例", f"{generator} 生成 cases/functional/", ["prepare-target"])
+        add("gen-api", "生成 API 用例", f"{generator} 生成 cases/api/，绑定 related_func", ["gen-functional"])
+        add("gen-ui", "生成 UI 用例", f"{generator} 生成 cases/ui/，绑定 related_func 并可用 skill 动作", ["gen-functional"])
 
     add("validate", "用例格式校验", "校验 run_id、必填字段与 skill 动作白名单",
         ["gen-functional", "gen-api", "gen-ui"])
@@ -72,6 +74,10 @@ def build_plan(cfg: dict, checks: dict, only: str, skip_gen: bool) -> list:
         add("execute-ui", "执行 UI 用例", "eg_skill / CDP 模式执行，采集截图与 Skill 结果", ["validate"])
 
     add("report", "生成测试报告", "产出 Markdown 与结构化 JSON 报告", ["execute-api", "execute-ui"])
+    if checks["casepipe"]["enabled"]:
+        add("casepipe-fill", "qa-toolkit 状态回填",
+            "把执行结果回填 Excel（接口层/UI 层），并按关联关系聚合场景层状态",
+            ["report"])
     if checks["database"]["enabled"]:
         add("db-sync", "MySQL 回流", "按列映射写入批次、用例、结果与报告表", ["report"])
     else:
@@ -87,6 +93,10 @@ def main():
     db_cfg = cfg.get("db") or {}
     ego = providers.get("ego_browser") or {}
     harness = providers.get("harness") or {}
+    pipe_cfg = qa_casepipe.casepipe_config(providers)
+    provider = str(harness.get("provider") or "harness").strip().lower()
+    spec_path = resolve(pipe_cfg["spec"]) if pipe_cfg["spec"] else None
+    scripts_dir = qa_casepipe.find_scripts_dir(pipe_cfg["scripts_dir"])
 
     requirements = resolve(cfg["project"]["requirements_dir"])
     source = resolve(cfg["project"]["source_dir"])
@@ -113,8 +123,17 @@ def main():
         "cases": {key: {"path": str(path), "count": _count_cases(path)} for key, path in cases.items()},
         "harness": {
             "enabled": bool(harness.get("enabled")),
+            "provider": provider,
             "mode": harness.get("mode", "command"),
             "configured": bool(harness.get("command") or harness.get("http_endpoint")),
+        },
+        "casepipe": {
+            "enabled": bool(pipe_cfg["enabled"]) or provider == "qa_casepipe",
+            "provider": provider,
+            "spec": str(spec_path or ""),
+            "spec_exists": bool(spec_path and spec_path.exists()),
+            "scripts_dir": str(scripts_dir or ""),
+            "scripts_found": bool(scripts_dir),
         },
         "ego": {
             "cli": cli,
@@ -157,13 +176,24 @@ def main():
     if not skip_gen:
         if not checks["harness"]["enabled"]:
             if total_cases == 0:
-                blockers.append("harness 未接入且 cases/ 无可用用例")
+                blockers.append("用例生成引擎未接入且 cases/ 无可用用例")
             else:
-                warnings.append("harness 未接入，将使用 cases/ 中现有用例")
+                warnings.append("用例生成引擎未接入，将使用 cases/ 中现有用例")
+        elif checks["harness"]["provider"] == "qa_casepipe":
+            if not checks["casepipe"]["spec"]:
+                blockers.append("harness.provider=qa_casepipe 但未配置 qa_casepipe.spec")
+            elif not checks["casepipe"]["spec_exists"]:
+                blockers.append(f"qa-case-pipeline spec 不存在: {checks['casepipe']['spec']}")
+            if not checks["casepipe"]["scripts_found"]:
+                blockers.append("未找到 qa-case-pipeline scripts 目录（gen_cases.py / fill_status.py）")
         elif not checks["harness"]["configured"]:
             blockers.append("harness.enabled=true 但未配置 command/http_endpoint")
-        if checks["harness"]["enabled"] and (not checks["requirements"]["files"] or not checks["source"]["files"]):
+        if (checks["harness"]["enabled"]
+                and checks["harness"]["provider"] == "harness"
+                and (not checks["requirements"]["files"] or not checks["source"]["files"])):
             blockers.append("harness 生成需要 project/requirements/ 与 project/src/ 非空")
+    if checks["casepipe"]["enabled"] and not checks["casepipe"]["scripts_found"]:
+        warnings.append("未找到 qa-case-pipeline scripts 目录，Excel 状态回填将跳过")
     if checks["database"]["enabled"] and not checks["database"]["env_exists"]:
         blockers.append("db.enabled=true 但 config/mysql.env 不存在")
     if checks["database"]["enabled"] and not checks["database"]["columns_configured"]:

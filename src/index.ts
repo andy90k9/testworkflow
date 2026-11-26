@@ -14,6 +14,7 @@ export interface Config {
   workflowDir: string
   timeoutSec: number
   autoLogin: boolean
+  casepipeDir: string
 }
 
 export const Config: Schema<Config> = Schema.object({
@@ -21,6 +22,7 @@ export const Config: Schema<Config> = Schema.object({
   workflowDir: Schema.string().default(''),
   timeoutSec: Schema.number().default(3600),
   autoLogin: Schema.boolean().default(true),
+  casepipeDir: Schema.string().default(''),
 })
 
 const execFileAsync = promisify(execFile)
@@ -53,7 +55,10 @@ function formatPlan(preflight: Preflight): string {
   lines.push('预置条件：')
   lines.push(`- 需求文件：${checks.requirements?.files ?? 0} 个`)
   lines.push(`- 代码文件：${checks.source?.files ?? 0} 个`)
-  lines.push(`- Harness：${checks.harness?.enabled ? '已接入' : '未接入'}`)
+  lines.push(`- 用例生成：${checks.harness?.provider || 'harness'}${checks.harness?.enabled ? '（已接入）' : '（未接入）'}`)
+  if (checks.casepipe?.enabled) {
+    lines.push(`- qa-case-pipeline：${checks.casepipe.scripts_found ? '已就绪' : '脚本目录缺失'}${checks.casepipe.spec_exists ? '' : '（spec 缺失）'}`)
+  }
   lines.push(`- EGO CLI：${checks.ego?.available ? checks.ego.cli_path : '不可用'}`)
   lines.push(`- UI 模式：${checks.ui_mode || '-'}`)
   lines.push(`- MySQL：${checks.database?.enabled ? '启用' : '未启用'}`)
@@ -72,7 +77,26 @@ function formatPlan(preflight: Preflight): string {
   return lines.join('\n')
 }
 
-async function runPreflight(config: Config, workflowDir: string, only: string, skipGen: boolean, targetUrl: unknown): Promise<Preflight> {
+/**
+ * 解析 qa-case-pipeline 的 scripts 目录：
+ * 1) 插件配置 casepipeDir；2) 宿主注入的 ctx.qaCasepipe（qa-toolkit 插件提供）。
+ * 拿不到时返回空串，Python 侧会自行按常见安装位置探测。
+ */
+function resolveCasepipeDir(ctx: any, config: Config): string {
+  const explicit = String(config?.casepipeDir || '').trim()
+  if (explicit) return explicit
+  try {
+    const svc = ctx?.qaCasepipe
+    if (!svc) return ''
+    if (svc.skillDir) return path.join(svc.skillDir, 'scripts')
+    if (svc.assetsDir) return path.join(svc.assetsDir, 'qa-case-pipeline', 'scripts')
+    return ''
+  } catch (_) {
+    return ''
+  }
+}
+
+async function runPreflight(config: Config, workflowDir: string, only: string, skipGen: boolean, targetUrl: unknown, casepipeDir: string): Promise<Preflight> {
   const script = path.join(workflowDir, 'scripts', 'preflight.py')
   try {
     const { stdout } = await execFileAsync(config.python || 'python3', [script], {
@@ -84,6 +108,7 @@ async function runPreflight(config: Config, workflowDir: string, only: string, s
         DSH_ONLY: only,
         DSH_SKIP_GEN: String(Boolean(skipGen)),
         DSH_TARGET_URL: String(targetUrl || ''),
+        DSH_QACASEPIPE_DIR: String(casepipeDir || ''),
       },
     })
     return lastJson(stdout) || { ok: false, blockers: ['预检脚本未返回有效 JSON'], warnings: [], plan: [] }
@@ -163,7 +188,7 @@ async function askTarget(ctx: any, args: Args): Promise<Target | { cancelled: tr
   }
 }
 
-async function prepareTarget(config: Config, workflowDir: string, target: Target, autoLogin: boolean) {
+async function prepareTarget(config: Config, workflowDir: string, target: Target, autoLogin: boolean, casepipeDir: string) {
   const script = path.join(workflowDir, 'scripts', 'prepare_target.py')
   const env = {
     ...process.env,
@@ -171,6 +196,7 @@ async function prepareTarget(config: Config, workflowDir: string, target: Target
     DSH_SSO_USER: target.user,
     DSH_SSO_PASSWORD: target.password,
     DSH_AUTO_LOGIN: String(autoLogin),
+    DSH_QACASEPIPE_DIR: String(casepipeDir || ''),
   }
   try {
     const { stdout } = await execFileAsync(config.python || 'python3', [script], {
@@ -194,6 +220,10 @@ async function prepareTarget(config: Config, workflowDir: string, target: Target
 
 export function apply(ctx: Context, config: Config): void {
   ctx.logger(name).info('loaded')
+  const casepipeDir = resolveCasepipeDir(ctx as any, config)
+  if (casepipeDir) {
+    ctx.logger(name).info(`qa-case-pipeline scripts: ${casepipeDir}`)
+  }
 
   ctx.tools.register(
     defineTool({
@@ -222,7 +252,7 @@ export function apply(ctx: Context, config: Config): void {
         }
 
         const skipGen = Boolean(args.skipGen)
-        const preflight = await runPreflight(config, workflowDir, only, skipGen, args.targetUrl)
+        const preflight = await runPreflight(config, workflowDir, only, skipGen, args.targetUrl, casepipeDir)
         const planText = formatPlan(preflight)
 
         if (!preflight.ok) {
@@ -267,7 +297,7 @@ export function apply(ctx: Context, config: Config): void {
         }
 
         const autoLogin = args.autoLogin === undefined ? config.autoLogin !== false : Boolean(args.autoLogin)
-        const prep = await prepareTarget(config, workflowDir, asked, autoLogin)
+        const prep = await prepareTarget(config, workflowDir, asked, autoLogin, casepipeDir)
         if (prep.data?.manualLoginRequired) {
           return JSON.stringify({
             ok: false,
@@ -293,7 +323,7 @@ export function apply(ctx: Context, config: Config): void {
             cwd: workflowDir,
             timeout,
             maxBuffer: 20 * 1024 * 1024,
-            env: { ...process.env, DSH_UI_MODE: 'ego_skill', DSH_TARGET_URL: asked.url },
+            env: { ...process.env, DSH_UI_MODE: 'ego_skill', DSH_TARGET_URL: asked.url, DSH_QACASEPIPE_DIR: String(casepipeDir || '') },
           })
           const runId = (stdout.match(/run_id = (run-[^\s]+)/) || [])[1] || ''
           return JSON.stringify({

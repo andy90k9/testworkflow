@@ -15,6 +15,7 @@
 #   {output_dir}/ui/*.yaml           UI 用例
 harness:
   enabled: false                      # 填好接入信息后改 true
+  provider: harness                    # 用例生成引擎：harness | qa_casepipe
   mode: command                       # command | http
   command: ""                         # 例: python3 /path/to/harness/run.py --req {requirements} --src {source} --out {output} --run-id {run_id}
   http_endpoint: ""                   # 例: http://127.0.0.1:9000/generate
@@ -22,6 +23,25 @@ harness:
   http_headers: {}                    # 例: {Authorization: "Bearer xxx"}
   timeout_sec: 600
   output_dir: records/harness-output  # harness 产物落点，适配层会自动分发到 cases/
+
+# —— qa-toolkit / qa-case-pipeline（三层用例：场景 / 接口 / UI）——
+# 把 harness.provider 改成 qa_casepipe 后，用例生成阶段改由 qa-case-pipeline 承担：
+#   1) gen_cases.py   : spec JSON → Markdown + Excel（三层用例）
+#   2) spec 转 cases/ : 场景→cases/functional、接口→cases/api、UI→cases/ui
+#   3) fill_status.py : 执行结果回填 Excel + COUNTIF 统计 + 场景层聚合
+# 脚本位置：留空时按 DSH_QACASEPIPE_DIR 环境变量 → node_modules → 同级 qa-toolkit →
+# ~/.dsh/profiles/*/node_modules 顺序自动探测。
+qa_casepipe:
+  enabled: false                      # 与 harness.enabled 一起作为生成阶段开关
+  spec: project/requirements/qa-spec.json   # qa-case-pipeline spec（场景/接口/UI 三层）
+  scripts_dir: ""                     # 留空自动探测；也可填 qa-toolkit/skill/qa-case-pipeline/scripts
+  outputs:
+    md: reports/qa-cases.md           # 生成的三层用例 Markdown
+    xlsx: reports/qa-cases.xlsx       # 生成的三层用例 Excel（执行后回填状态）
+  sheets:
+    scenario: 核心链路用例             # 场景层工作表名
+    api: API接口用例                  # 接口层工作表名
+    ui: UI用例(Playwright)            # UI 层工作表名
 
 # —— Ego 浏览器（UI 用例执行通道）——
 # 两种模式，由 config/workflow.yaml → tests.ui_mode 选择：

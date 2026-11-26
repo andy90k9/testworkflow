@@ -8,6 +8,7 @@
   ④ 执行测试（pytest API + Playwright UI，支持 CDP 接管 EGO 浏览器）
   ⑤ 执行记录（records/<run_id>/）
   ⑥ 测试报告（reports/report-<run_id>.md / .json）
+      附：qa_casepipe.enabled=true 时，报告阶段附带 qa-toolkit 场景层聚合与 Excel 状态回填
   ⑦ MySQL 回流（db.enabled: true 时自动入库）
 
 退出码：0 全部通过；1 有用例失败；2 流程异常中断；3 EGO CDP 连不上。
@@ -28,6 +29,7 @@ from dsh_common import (  # noqa: E402
     load_config, ensure_dirs, init_run_id, inject_run_id_into_cases,
     load_providers, WORKFLOW_ROOT,
 )
+import qa_casepipe  # noqa: E402
 
 
 def _run(stage: str, cmd: list, allow_fail: bool = False) -> int:
@@ -59,11 +61,17 @@ def main():
     paths = ensure_dirs(cfg)
     run_id = init_run_id(force=True)
     execute_cfg = cfg.get("execute") or {}
+    providers = load_providers()
+    harness_cfg = providers.get("harness") or {}
+    provider = str(harness_cfg.get("provider") or "harness")
+    pipe_cfg = qa_casepipe.casepipe_config(providers)
     print("\n" + "=" * 62)
     print(f"DSH 测试工作流 · run_id = {run_id}")
-    print(f"UI 模式: {cfg['tests'].get('ui_mode', 'local')} | harness: "
-          f"{'已接入' if _harness_enabled() else '未接入'} | DB: "
+    print(f"UI 模式: {cfg['tests'].get('ui_mode', 'local')} | 用例生成: "
+          f"{provider}{'（已接入）' if _harness_enabled() else '（未接入）'} | DB: "
           f"{'启用' if (cfg.get('db') or {}).get('enabled') else '未启用(预留)'}")
+    if pipe_cfg["enabled"]:
+        print(f"qa-toolkit 回填: 已启用（spec={pipe_cfg['spec']}，Excel={pipe_cfg['xlsx']}）")
     print("=" * 62)
 
     # ①-③ 用例生成
