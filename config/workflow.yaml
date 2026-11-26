@@ -53,6 +53,7 @@ db:
     run_table: dsh_test_runs               # 执行批次表
     case_result_table: dsh_case_results    # 单用例执行结果表
     report_table: dsh_test_reports         # 报告摘要表
+    bug_table: dsh_test_bugs               # 缺陷台账表
   # 列映射：dsh 字段 -> 你的表列名。拿到你的 DDL 后按需修改即可，
   # 不需要改脚本代码。缺省值见 scripts/db_sync.py 内 DEFAULT_COLUMN_MAP。
   columns: {}

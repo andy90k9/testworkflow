@@ -104,7 +104,8 @@ dsh-workflow/
 ├── tests/                   # 数据驱动执行器（无需手改）
 │   ├── api/test_api_cases.py   # 读 cases/api/*.yaml 参数化执行
 │   └── ui/test_ui_cases.py     # Playwright / ego_skill 双模式 UI 执行器
-├── records/<run_id>/         # ④⑤ 执行记录（junitxml/日志/summary/明细/runtime）
+├── records/<run_id>/         # ④⑤ 执行记录（junitxml/日志/summary/明细/runtime/bugs 快照）
+├── records/bugs.json         # 缺陷台账主表（跨批次累积，含状态与流转留痕）
 ├── reports/report-<run_id>.md / .json # ⑥ 测试报告
 ├── reports/qa-cases.md / .xlsx        # qa-toolkit 三层用例集（生成 + 状态回填）
 ├── scripts/
@@ -115,6 +116,7 @@ dsh-workflow/
 │   ├── qa_casepipe.py       # qa-toolkit 融合适配层（生成/翻译/回填/聚合）
 │   ├── case_aggregate.py    # 用例关联索引 + 功能（场景层）状态派生
 │   ├── import_external_results.py  # 外部执行结果导入器（把别的通道结果接进本账本）
+│   ├── bug_tracker.py       # 缺陷台账（要素模型 + 状态机 + 同根因归并 + 流转留痕）
 │   └── db_sync.py           # MySQL 回流（列映射适配你已有表）
 └── skill/dsh-workflow/      # Loomy Skill 编排层
 ```
@@ -302,6 +304,87 @@ python3 scripts/import_external_results.py \
   并同步更新 `summary.overall`；
 - 本批次已执行过的用例不会被重复计数（仅当外部结果更差时才覆盖）。
 
+## 缺陷台账（过程发现即留痕）
+
+测试过程中发现的失败/错误**不会只体现在报告里**，而是自动开单进缺陷台账，
+含完整基本要素、状态流转与流转留痕，并随批次落库。
+
+### 1. 自动开单（执行结束即生效）
+
+`run_tests.py` 执行结束后会扫描 api / ui / functional 三层明细中
+`status ∈ {failed, errors}` 的用例，自动并入台账：
+
+| 行为 | 说明 |
+| --- | --- |
+| **同根因归并** | 指纹 = `sha1(模块 + 归一化错误签名)`，数字/UUID/长 hex 归一化后相同的失败视为同一根因，只开一单 |
+| **关联用例累积** | 归并的多个用例全部记入 `case_ids`，主用例保留首个 |
+| **跨批次累加** | 同一缺陷再次出现只累加 `occurrences` 与 `seen_runs`，不重复开单 |
+| **自动重开** | `已关闭` / `已拒绝` 的缺陷再次复现 → 自动置为 `重新打开` 并留痕 |
+| **要素补全** | 执行明细缺的模块、优先级、标题、复现步骤、期望结果，从 `cases/*.yaml` 补齐 |
+
+### 2. 缺陷基本要素
+
+`records/bugs.json`（跨批次主表）中每条缺陷包含：
+
+```
+缺陷编号 / 指纹 / 错误签名 / 标题 / 严重级别 / 优先级 / 所属模块 / 当前状态
+关联用例（case_ids）/ 用例类型 / 缺陷描述 / 前置条件 / 复现步骤 / 期望结果 / 实际结果
+请求内容 / 响应内容 / 断言明细 / 截图证据 / 报告人 / 处理人
+复现次数 / 首见批次 / 出现批次 / 发现时间 / 最近出现时间
+确认时间 / 修复时间 / 关闭时间 / 流转记录（history）
+```
+
+严重级别：`blocker / critical / major / minor / trivial`；未标注优先级时按
+`P0→blocker、P1→critical、P2→major、P3→minor` 推导。
+
+### 3. 状态机与流转留痕
+
+```
+新建 ──→ 已确认 ──→ 修复中 ──→ 待验证 ──→ 已关闭
+ │         │          ↑          ↑           │
+ ↓         ↓          └── 已确认 ┘           ↓
+已拒绝 ←───┘                                  重新打开
+ ↑    └──────── 重新打开 ──→ 修复中 / 已确认 / 已拒绝
+ └── 重新打开
+```
+
+* **非法流转会被拒绝**并提示当前合法后继（例如 `新建 → 修复中` 不允许）
+* 每次变更写入 `history`（时间、原状态、新状态、备注、操作人）
+* 流转时可同时指定 `--assignee` 处理人与 `--severity` 级别调整（同样留痕）
+
+### 4. 台账命令
+
+```bash
+# 查看缺陷列表 / 单条详情（含全部要素与流转记录）
+python3 scripts/bug_tracker.py list
+python3 scripts/bug_tracker.py show --bug-id BUG-20261126-001
+
+# 手工登记一条缺陷
+python3 scripts/bug_tracker.py add --title "登录页验证码不刷新" \
+  --module auth --priority P1 --case-id API-AUTH-003 \
+  --description "点击刷新后验证码图片未变化" --expected "验证码刷新" --actual "图片未变"
+
+# 状态流转（非法流转会被拒绝并提示合法后继）
+python3 scripts/bug_tracker.py status --bug-id BUG-20261126-001 \
+  --to confirmed --note "确认为缺陷" --by 张三 --assignee 李四
+python3 scripts/bug_tracker.py status --bug-id BUG-20261126-001 \
+  --to rejected --severity trivial --note "判定为环境抖动" --by 张三
+
+# 指派处理人 / 统计 / 生成批次快照
+python3 scripts/bug_tracker.py assign --bug-id BUG-20261126-001 --assignee 李四
+python3 scripts/bug_tracker.py stats
+python3 scripts/bug_tracker.py sync --run run-20261126-153546
+```
+
+### 5. 落库与报告
+
+* **批次快照**：每批次写 `records/<run_id>/bugs.json`，内容 = 本批次发现/复现的缺陷
+  + 台账中仍未关闭的缺陷（避免上批次遗留的待修缺陷在本批次丢失）
+* **MySQL**：按 `db.tables.bug_table`（默认 `dsh_test_bugs`）逐条 upsert，
+  唯一键 `(run_id, bug_id)`；建表语句见 `python3 scripts/db_sync.py --suggest-ddl`
+* **报告**：自动追加「缺陷清单（过程发现）」章节，含状态/级别统计、明细表、
+  每条缺陷的基本要素与流转轨迹
+
 ## MySQL 回流（预留入口，DDL 后续调整）
 
 1. 复制 `config/mysql.example.env` 为 `config/mysql.env`，填入连接信息
@@ -339,6 +422,12 @@ db:
 | `python3 scripts/import_external_results.py --report <report.json> --cases <cases.json> --run <run_id>` | 导入其它通道的执行结果 |
 | `python3 scripts/db_sync.py --dry-run` | 入库演练 |
 | `python3 scripts/db_sync.py --suggest-ddl` | 查看建议建表语句 |
+| `python3 scripts/bug_tracker.py list` | 查看缺陷台账列表 |
+| `python3 scripts/bug_tracker.py show --bug-id BUG-xxx` | 查看单条缺陷详情（要素 + 流转记录） |
+| `python3 scripts/bug_tracker.py status --bug-id BUG-xxx --to confirmed` | 缺陷状态流转（非法流转会被拒绝） |
+| `python3 scripts/bug_tracker.py assign --bug-id BUG-xxx --assignee 李四` | 指派缺陷处理人 |
+| `python3 scripts/bug_tracker.py stats` | 缺陷统计（按状态 / 级别） |
+| `python3 scripts/bug_tracker.py sync --run run-xxx` | 生成批次缺陷快照（供回流） |
 
 ## 注意事项
 

@@ -59,6 +59,17 @@ DEFAULT_COLUMN_MAP = {
         "report_json": "report_json", "report_html_path": "report_html_path",
         "conclusion": "conclusion", "created_at": "created_at",
     },
+    "bug_table": {
+        "run_id": "run_id", "bug_id": "bug_id", "title": "title", "severity": "severity",
+        "priority": "priority", "module": "module", "status": "status", "case_id": "case_id",
+        "case_type": "case_type", "description": "description", "steps_json": "steps_json",
+        "expected": "expected", "actual": "actual", "req_content": "req_content",
+        "resp_content": "resp_content", "assert_detail": "assert_detail",
+        "screenshot_path": "screenshot_path", "reporter": "reporter", "assignee": "assignee",
+        "occurrences": "occurrences", "first_run_id": "first_run_id", "found_at": "found_at",
+        "confirmed_at": "confirmed_at", "fixed_at": "fixed_at", "closed_at": "closed_at",
+        "ext_json": "ext_json",
+    },
 }
 
 SUGGEST_DDL = """
@@ -123,6 +134,40 @@ CREATE TABLE IF NOT EXISTS dsh_case_results (
   UNIQUE KEY uk_run_case_attempt (run_id, case_id, attempt),
   KEY idx_run_id (run_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用例执行结果表';
+
+CREATE TABLE IF NOT EXISTS dsh_test_bugs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  run_id VARCHAR(64) NOT NULL,
+  bug_id VARCHAR(64) NOT NULL,
+  title VARCHAR(512),
+  severity VARCHAR(16) COMMENT 'blocker/critical/major/minor/trivial',
+  priority VARCHAR(8),
+  module VARCHAR(128),
+  status VARCHAR(16) COMMENT 'new/confirmed/fixing/verifying/closed/reopened/rejected',
+  case_id VARCHAR(64),
+  case_type VARCHAR(16),
+  description TEXT,
+  steps_json JSON,
+  expected TEXT,
+  actual TEXT,
+  req_content LONGTEXT,
+  resp_content LONGTEXT,
+  assert_detail JSON,
+  screenshot_path VARCHAR(512),
+  reporter VARCHAR(64),
+  assignee VARCHAR(64),
+  occurrences INT DEFAULT 1,
+  first_run_id VARCHAR(64),
+  found_at DATETIME,
+  confirmed_at DATETIME,
+  fixed_at DATETIME,
+  closed_at DATETIME,
+  ext_json JSON,
+  UNIQUE KEY uk_run_bug (run_id, bug_id),
+  KEY idx_run_id (run_id),
+  KEY idx_status (status),
+  KEY idx_severity (severity)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试缺陷台账表';
 
 CREATE TABLE IF NOT EXISTS dsh_test_reports (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -397,7 +442,58 @@ def main():
     if sql:
         sqls.append(("report", sql, vals))
 
-    counts = {"case": 0, "run": 0, "result": 0, "report": 0}
+    # 缺陷台账回流：records/<run_id>/bugs.json（批次快照）
+    bug_map = get_column_map(cfg, "bug_table")
+    bug_rows = 0
+    bug_path = run_dir / "bugs.json"
+    if bug_path.exists():
+        for bug in read_json(bug_path):
+            if not isinstance(bug, dict) or not bug.get("bug_id"):
+                continue
+            row = {
+                "run_id": run_id,
+                "bug_id": bug.get("bug_id"),
+                "title": bug.get("title"),
+                "severity": bug.get("severity"),
+                "priority": bug.get("priority"),
+                "module": bug.get("module"),
+                "status": bug.get("status"),
+                "case_id": bug.get("case_id"),
+                "case_type": bug.get("case_type"),
+                "description": bug.get("description"),
+                "steps_json": _json_text(bug.get("steps") or []),
+                "expected": bug.get("expected"),
+                "actual": bug.get("actual"),
+                "req_content": bug.get("req_content") or "",
+                "resp_content": bug.get("resp_content") or "",
+                "assert_detail": _json_text(bug.get("assert_detail") or []),
+                "screenshot_path": bug.get("screenshot_path") or "",
+                "reporter": bug.get("reporter") or "",
+                "assignee": bug.get("assignee") or "",
+                "occurrences": bug.get("occurrences") or 1,
+                "first_run_id": bug.get("first_run_id"),
+                "found_at": bug.get("found_at"),
+                "confirmed_at": bug.get("confirmed_at") or None,
+                "fixed_at": bug.get("fixed_at") or None,
+                "closed_at": bug.get("closed_at") or None,
+                "ext_json": _json_text({
+                    "fingerprint": bug.get("fingerprint"),
+                    "error_signature": bug.get("error_signature"),
+                    "case_ids": bug.get("case_ids") or [],
+                    "precondition": bug.get("precondition") or "",
+                    "last_seen_at": bug.get("last_seen_at"),
+                    "last_status_at": bug.get("last_status_at"),
+                    "seen_runs": bug.get("seen_runs") or [],
+                    "history": bug.get("history") or [],
+                }),
+            }
+            bsql, bvals = _build_sql(tables.get("bug_table", "dsh_test_bugs"), row, bug_map,
+                                     ("run_id", "bug_id"))
+            if bsql:
+                sqls.append(("bug", bsql, bvals))
+                bug_rows += 1
+
+    counts = {"case": 0, "run": 0, "result": 0, "report": 0, "bug": 0}
     for kind, sql, vals in sqls:
         if args.dry_run:
             preview = sql
@@ -410,7 +506,7 @@ def main():
         counts[kind] += 1
 
     print(f"回流完成: 用例 {counts['case']} 条 | 批次 {counts['run']} 条 | "
-          f"结果 {counts['result']} 条 | 报告 {counts['report']} 条"
+          f"结果 {counts['result']} 条 | 报告 {counts['report']} 条 | 缺陷 {counts['bug']} 条"
           + ("（dry-run 未实际写库）" if args.dry_run else ""))
 
 

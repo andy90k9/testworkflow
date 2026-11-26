@@ -64,6 +64,10 @@ def load_case_index(paths: dict) -> dict:
                     "priority": item.get("priority"),
                     "related_func": item.get("related_func"),
                     "related_req": item.get("related_req"),
+                    "steps": item.get("steps") or [],
+                    "expect": item.get("expect") or {},
+                    "request": item.get("request") or {},
+                    "precondition": item.get("precondition") or "",
                 }
     return index
 

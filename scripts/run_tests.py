@@ -145,6 +145,31 @@ def _run_suite(kind: str, test_dir: Path, run_dir: Path, env_extra: dict):
     return stats, details, env_skipped, proc.returncode
 
 
+def _enrich_failure(item: dict, case_index: dict) -> dict:
+    """用用例定义补全失败明细的要素（模块/优先级/标题/步骤/期望）。
+
+    执行明细来自 junit + runtime，缺少的用例属性从 cases/*.yaml 索引补齐，
+    保证缺陷记录具备完整的基本要素。
+    """
+    meta = case_index.get(item.get("case_id") or "") or {}
+    merged = dict(item)
+    if not merged.get("suite"):
+        merged["suite"] = meta.get("case_type") or item.get("suite")
+    if not merged.get("title") and meta.get("title"):
+        merged["title"] = meta["title"]
+    if not merged.get("module") and meta.get("module"):
+        merged["module"] = meta["module"]
+    if not merged.get("priority") and meta.get("priority"):
+        merged["priority"] = meta["priority"]
+    if not merged.get("steps") and meta.get("steps"):
+        merged["steps"] = meta["steps"]
+    if not merged.get("expected") and meta.get("expect"):
+        merged["expected"] = meta["expect"]
+    if not merged.get("precondition") and meta.get("precondition"):
+        merged["precondition"] = meta["precondition"]
+    return merged
+
+
 def main():
     parser = argparse.ArgumentParser(description="DSH 测试执行编排")
     parser.add_argument("--only", choices=["functional", "api", "ui", "all"], default="all")
@@ -259,6 +284,37 @@ def main():
         summary["exit_code"] = 2
     elif o["failed"] + o["errors"] > 0:
         summary["exit_code"] = 1
+
+    # ④ 缺陷台账：失败/错误用例自动开单（同根因复用，跨批次累加复现次数）
+    try:
+        import bug_tracker
+        from case_aggregate import load_case_index
+
+        ledger = bug_tracker.load_ledger(paths)
+        case_index = load_case_index(paths)
+        failures = []
+        for name in ("api-detail.json", "ui-detail.json", "functional-detail.json"):
+            fp = run_dir / name
+            if not fp.exists():
+                continue
+            for it in read_json(fp):
+                if it.get("status") in ("failed", "errors"):
+                    failures.append(_enrich_failure(it, case_index))
+        created, reused = bug_tracker.upsert_from_failures(ledger, failures, run_id)
+        if created or reused:
+            bug_tracker.save_ledger(paths, ledger)
+        # 始终写批次快照：本批次发现/复现的 + 台账中仍未关闭的缺陷
+        snapshot = bug_tracker.batch_snapshot(ledger, run_id)
+        bug_tracker.save_batch_snapshot(paths, run_id, snapshot)
+        if created or reused:
+            print(f"缺陷台账: 新开单 {len(created)} 条 | 复现复用 {len(reused)} 条 | "
+                  f"台账累计 {len(ledger)} 条")
+            if created:
+                print("  新建缺陷: " + ", ".join(created[:10]))
+        else:
+            print(f"缺陷台账: 本批次无失败用例 | 待跟踪缺陷 {len(snapshot)} 条")
+    except Exception as exc:  # noqa: BLE001
+        print(f"缺陷台账跳过: {exc}")
 
     write_json(run_dir / "summary.json", summary)
     write_json(paths["records"] / "latest.json", {"run_id": run_id, "run_dir": str(run_dir)})

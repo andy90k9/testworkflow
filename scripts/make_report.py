@@ -64,6 +64,70 @@ def _functional_section(items: list) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _trail_label(item: dict) -> str:
+    """流转记录的展示文案：区分「创建」「状态流转」「属性调整」。"""
+    from bug_tracker import STATUS_CN as BUG_STATUS_CN
+
+    src = item.get("from") or ""
+    dst = item.get("to") or ""
+    src_label = BUG_STATUS_CN.get(src, src) if src else "创建"
+    dst_label = BUG_STATUS_CN.get(dst, dst)
+    if src and src == dst:
+        return f"{src_label}（属性调整）"
+    return f"{src_label}→{dst_label}"
+
+
+def _bug_section(bugs: list) -> str:
+    """缺陷清单：过程发现的缺陷台账（基本要素 + 状态）。"""
+    if not bugs:
+        return ""
+    from bug_tracker import SEVERITY_CN, STATUS_CN, stats
+
+    data = stats(bugs)
+    lines = [
+        f"共 {data['total']} 条缺陷，未关闭 {data['open']} 条。",
+        "按状态：" + " | ".join(f"{STATUS_CN[k]} {v}" for k, v in data["by_status"].items() if v),
+        "按级别：" + " | ".join(f"{SEVERITY_CN[k]} {v}" for k, v in data["by_severity"].items() if v),
+        "",
+        "| 缺陷编号 | 标题 | 级别 | 状态 | 关联用例 | 处理人 | 复现 | 发现时间 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for bug in bugs:
+        title = str(bug.get("title") or "").replace("|", "\\|")[:80]
+        case_ids = bug.get("case_ids") or ([bug.get("case_id")] if bug.get("case_id") else [])
+        lines.append(
+            f"| {bug.get('bug_id')} | {title} "
+            f"| {SEVERITY_CN.get(bug.get('severity'), bug.get('severity'))} "
+            f"| {STATUS_CN.get(bug.get('status'), bug.get('status'))} "
+            f"| {', '.join(str(c) for c in case_ids) or '-'} | {bug.get('assignee') or '-'} "
+            f"| {bug.get('occurrences') or 1} | {str(bug.get('found_at') or '-')[:19]} |"
+        )
+    lines.append("")
+    lines.append("缺陷明细（基本要素与流转记录）：")
+    lines.append("")
+    for bug in bugs:
+        lines.append(f"**{bug.get('bug_id')}** {bug.get('title')}")
+        lines.append("")
+        lines.append(f"- 级别 / 优先级：{SEVERITY_CN.get(bug.get('severity'), bug.get('severity'))}"
+                     f" / {bug.get('priority') or '-'}　模块：{bug.get('module') or '-'}")
+        lines.append(f"- 状态：{STATUS_CN.get(bug.get('status'), bug.get('status'))}"
+                     f"　处理人：{bug.get('assignee') or '-'}　复现次数：{bug.get('occurrences') or 1}")
+        if bug.get("expected"):
+            lines.append(f"- 期望结果：{bug['expected']}")
+        if bug.get("actual"):
+            lines.append(f"- 实际结果：{bug['actual']}")
+        if bug.get("steps"):
+            lines.append("- 复现步骤：" + "；".join(str(s) for s in bug["steps"]))
+        if bug.get("screenshot_path"):
+            lines.append(f"- 截图证据：{bug['screenshot_path']}")
+        history = bug.get("history") or []
+        if history:
+            trail = " → ".join(_trail_label(h) for h in history)
+            lines.append(f"- 流转：{trail}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def _suite_table(summary: dict) -> str:
     lines = ["| 测试类型 | 总数 | 通过 | 失败 | 错误 | 跳过 | 耗时 | 备注 |",
              "| --- | --- | --- | --- | --- | --- | --- | --- |"]
@@ -187,6 +251,14 @@ def main():
     o = summary["overall"]
     details = _load_details(run_dir)
 
+    bugs = []
+    bug_path = run_dir / "bugs.json"
+    if bug_path.exists():
+        try:
+            bugs = read_json(bug_path) or []
+        except Exception:  # noqa: BLE001
+            bugs = []
+
     providers = load_providers()
     env = str(summary.get("config", {}).get("api_base_url") or "")
     casepipe = _casepipe_data(providers, details, run_dir, env)
@@ -225,6 +297,9 @@ def main():
     functional_section = _functional_section(details)
     if functional_section:
         extra_sections.append(("功能（场景层）用例统计", functional_section))
+    bug_section_text = _bug_section(bugs)
+    if bug_section_text:
+        extra_sections.append(("缺陷清单（过程发现）", bug_section_text))
     if casepipe_section:
         extra_sections.append(("场景层状态统计（qa-case-pipeline）", casepipe_section))
     index = 0
@@ -260,6 +335,8 @@ def main():
         "fail_list": [it for it in details if it.get("status") in ("failed", "errors")],
         "skip_list": [it for it in details if it.get("status") == "skipped"],
         "functional_list": [it for it in details if it.get("suite") == "functional"],
+        "bugs": bugs,
+        "bug_stats": (__import__("bug_tracker").stats(bugs) if bugs else {}),
         "module_distribution": {},
         "qa_pipeline": casepipe,
     }

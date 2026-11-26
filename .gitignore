@@ -1,4 +1,6 @@
 mysql.env
+.venv/
+venv/
 records/run-*/
 reports/report-*.md
 __pycache__/

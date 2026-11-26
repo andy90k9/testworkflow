@@ -185,6 +185,8 @@ flowchart LR
 | `api-pytest.log` / `ui-pytest.log` | 执行日志 |
 | `api-detail.json` / `ui-detail.json` | 用例级明细：状态、耗时、错误、请求/响应、断言、截图路径 |
 | `summary.json` | 汇总统计 + `run_id` + 配置快照 |
+| `bugs.json` | 本批次缺陷快照（发现/复现 + 仍未关闭的缺陷） |
+| `records/bugs.json` | 缺陷台账主表（跨批次累积，含要素、状态、流转留痕） |
 | `records/latest.json` | 最近批次指针 |
 
 ### 4.6 测试报告
@@ -194,6 +196,8 @@ flowchart LR
 - `reports/report-<run_id>.html`：可选，供评审预览。
 - `qa_casepipe.enabled: true` 时额外产出：Markdown「场景层状态统计」章节 +
   JSON 的 `qa_pipeline` 字段（场景级结论与回填结果）。
+- 有缺陷时追加「缺陷清单（过程发现）」章节：状态/级别统计 + 明细表 +
+  每条缺陷的基本要素与流转轨迹；JSON 同步带 `bugs` 与 `bug_stats` 字段。
 
 ### 4.8 用例集状态回填与场景层聚合（qa_casepipe.enabled: true）
 
@@ -208,7 +212,46 @@ flowchart LR
 - `db.enabled: true` 时自动回流；`--dry-run` 只打印 SQL。
 - 截图等二进制本地存储，库表只存路径。
 - 所有写入按 `run_id + case_id` 幂等。
+- 缺陷按 `run_id + bug_id` 幂等。
 - DDL 未最终确定时，只改 `workflow.yaml → db.columns`，不改脚本。
+
+### 4.9 缺陷台账（过程发现即留痕）
+
+执行阶段结束后，`run_tests.py` 扫描 api / ui / functional 明细中
+`status ∈ {failed, errors}` 的用例，自动并入缺陷台账（`scripts/bug_tracker.py`）。
+
+| 行为 | 规则 |
+| --- | --- |
+| 同根因归并 | 指纹 = `sha1(模块 + 归一化错误签名)`，数字/UUID/长 hex 归一化后相同的失败视为同一根因，只开一单 |
+| 关联用例累积 | 归并的多个用例全部记入 `case_ids`，主用例保留首个 |
+| 跨批次累加 | 再次出现只累加 `occurrences` 与 `seen_runs`，不重复开单 |
+| 自动重开 | `已关闭` / `已拒绝` 的缺陷复现 → 自动置 `重新打开` 并留痕 |
+| 要素补全 | 执行明细缺的模块/优先级/标题/步骤/期望，从 `cases/*.yaml` 补齐 |
+
+缺陷基本要素：编号、指纹、错误签名、标题、严重级别、优先级、模块、状态、
+关联用例、用例类型、描述、前置条件、复现步骤、期望结果、实际结果、
+请求/响应内容、断言明细、截图证据、报告人、处理人、复现次数、
+首见/出现批次、发现/确认/修复/关闭时间、流转记录 `history`。
+
+状态机（非法流转直接拒绝并提示合法后继）：
+
+```
+新建 → 已确认 → 修复中 → 待验证 → 已关闭
+  ↓      ↓        ↑        ↑        ↓
+已拒绝 ←┘        已确认 ←──┘     重新打开
+  ↑                               ↓
+  └────── 重新打开 ──────────────┘
+```
+
+命令：
+
+```bash
+python3 scripts/bug_tracker.py list | show --bug-id BUG-xxx | stats
+python3 scripts/bug_tracker.py add --title "..." --module auth --priority P1
+python3 scripts/bug_tracker.py status --bug-id BUG-xxx --to confirmed --by 张三 --assignee 李四
+python3 scripts/bug_tracker.py assign --bug-id BUG-xxx --assignee 李四
+python3 scripts/bug_tracker.py sync --run <run_id>
+```
 
 ---
 
@@ -501,7 +544,46 @@ class TestReport(TypedDict):
     pass_list: list[TestRecord]
     fail_list: list[TestRecord]
     skip_list: list[TestRecord]
+    bugs: list["BugRecord"]
+    bug_stats: dict[str, Any]
     module_distribution: dict[str, Any]
+
+BugStatus = Literal["new", "confirmed", "fixing", "verifying",
+                    "closed", "reopened", "rejected"]
+BugSeverity = Literal["blocker", "critical", "major", "minor", "trivial"]
+
+class BugRecord(TypedDict):
+    bug_id: str
+    fingerprint: str
+    error_signature: str
+    title: str
+    severity: BugSeverity
+    priority: str
+    module: str
+    status: BugStatus
+    case_id: str
+    case_ids: list[str]
+    case_type: CaseType
+    description: str
+    precondition: str
+    steps: list[str]
+    expected: str
+    actual: str
+    req_content: str
+    resp_content: str
+    assert_detail: list[dict[str, Any]]
+    screenshot_path: str
+    reporter: str
+    assignee: str
+    occurrences: int
+    first_run_id: str
+    seen_runs: list[str]
+    found_at: str
+    last_seen_at: str
+    confirmed_at: str
+    fixed_at: str
+    closed_at: str
+    history: list[dict[str, Any]]
 ```
 
 ### 7.2 建议 DDL
@@ -586,6 +668,40 @@ CREATE TABLE IF NOT EXISTS dsh_test_reports (
   created_at DATETIME,
   ext_json JSON
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试报告表';
+
+CREATE TABLE IF NOT EXISTS dsh_test_bugs (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  run_id VARCHAR(64) NOT NULL,
+  bug_id VARCHAR(64) NOT NULL,
+  title VARCHAR(512),
+  severity VARCHAR(16) COMMENT 'blocker/critical/major/minor/trivial',
+  priority VARCHAR(8),
+  module VARCHAR(128),
+  status VARCHAR(16) COMMENT 'new/confirmed/fixing/verifying/closed/reopened/rejected',
+  case_id VARCHAR(64),
+  case_type VARCHAR(16),
+  description TEXT,
+  steps_json JSON,
+  expected TEXT,
+  actual TEXT,
+  req_content LONGTEXT,
+  resp_content LONGTEXT,
+  assert_detail JSON,
+  screenshot_path VARCHAR(512),
+  reporter VARCHAR(64),
+  assignee VARCHAR(64),
+  occurrences INT DEFAULT 1,
+  first_run_id VARCHAR(64),
+  found_at DATETIME,
+  confirmed_at DATETIME,
+  fixed_at DATETIME,
+  closed_at DATETIME,
+  ext_json JSON,
+  UNIQUE KEY uk_run_bug (run_id, bug_id),
+  KEY idx_run_id (run_id),
+  KEY idx_status (status),
+  KEY idx_severity (severity)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='测试缺陷台账表';
 ```
 
 ---
@@ -621,7 +737,7 @@ dsh-workflow/
 ├─ project/               # requirements/ 与 src/（前置输入）
 ├─ cases/                 # functional/ api/ ui/ 三类用例 YAML
 ├─ tests/                 # api/ 与 ui/ 数据驱动执行器
-├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe
+├─ scripts/               # run_pipeline / validate_cases / run_tests / make_report / db_sync / harness_adapter / qa_casepipe / bug_tracker
 ├─ skill/dsh-workflow/    # 对话式编排 Skill（本文件评审通过后替换此目录下的 SKILL.md）
 ├─ records/               # current-run.json / run-<run_id>/ / screenshots/
 ├─ reports/               # report-<run_id>.md / .json / .html + qa-cases.md / .xlsx
@@ -640,6 +756,7 @@ dsh-workflow/
 | 单步执行 | `python3 scripts/run_tests.py --only api\|ui` |
 | 单步报告 | `python3 scripts/make_report.py --run <run_id>`（含场景层聚合与 Excel 回填） |
 | 单步入库 | `python3 scripts/db_sync.py --dry-run` / `--suggest-ddl` |
+| 缺陷台账 | `python3 scripts/bug_tracker.py list\|show\|stats\|status\|assign\|add\|sync` |
 
 ---
 
