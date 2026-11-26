@@ -86,7 +86,8 @@ def _run_js(js: str) -> str:
         proc = subprocess.run(cmd, input=js, capture_output=True, text=True, timeout=timeout_sec())
     if proc.returncode != 0:
         raise RuntimeError(f"ego-browser nodejs 返回 {proc.returncode}: {(proc.stderr or proc.stdout)[-2000:]}")
-    return proc.stdout
+    # ego-browser 版本差异：console.log 的 JSON 可能落在 stdout 或 stderr，合并后由 _parse_result 取最后一段 JSON。
+    return (proc.stdout or "") + "\n" + (proc.stderr or "")
 
 
 def _parse_result(stdout: str) -> dict:
@@ -191,8 +192,15 @@ def _emit_skill(skill: str, args: dict, idx: int, shot_dir: Path, cid: str) -> l
         lines.append(f"report.screenshot_path = r{idx};")
         lines.append(f"report.skill_results.push({{ skill: {_js(skill)}, args: a{idx}, result: r{idx} }});")
     elif skill == "evaluate":
-        script = args.get("script") or args.get("expression") or "return null"
-        lines.append(f"const r{idx} = await page.evaluate({_js(script)}, a{idx}.arg);")
+        script = args.get("script") or args.get("expression") or "null"
+        has_arg = "arg" in args and args.get("arg") is not None
+        stripped = script.strip()
+        is_function = stripped.startswith("function") or stripped.startswith("async ") or "=>" in stripped
+        if has_arg:
+            fn = script if is_function else f"(__arg) => ({script})"
+            lines.append(f"const r{idx} = await page.evaluate({_js(fn)}, a{idx}.arg);")
+        else:
+            lines.append(f"const r{idx} = await page.evaluate({_js(script)});")
         lines.append(f"report.skill_results.push({{ skill: 'evaluate', args: a{idx}, result: r{idx} }});")
     elif skill == "extract":
         selector = args.get("selector", "body")
