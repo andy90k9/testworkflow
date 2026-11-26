@@ -25,6 +25,7 @@ dsh web --dump-config | grep dsh-workflow
 
 安装后插件注册工具 `dsh_workflow_run`，参数：`only`（api/ui/all）、`skipGen`、`dryDb`、`noDb`、`timeoutSec`。
 插件配置：`python`、`workflowDir`、`timeoutSec`。
+兼容范围：`engines.dsh: ^0.2.0-rc.1`，已声明兼容 `0.2.1-alpha.3` 与 `0.2.1-rc.3`。
 
 ## 架构总览
 
