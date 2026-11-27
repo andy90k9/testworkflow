@@ -313,7 +313,7 @@ harness:
   mode: command
   command: "python3 /path/to/harness/run.py --req {requirements} --src {source} --out {output} --run-id {run_id}"
   timeout_sec: 600
-  output_dir: records/harness-output
+  output_dir: ../dsh-workflow-tmp/harness-output
 ```
 
 http 模式请求体：
@@ -323,7 +323,7 @@ http 模式请求体：
   "run_id": "run-20261126-101500",
   "requirements_dir": "/abs/path/project/requirements",
   "source_dir": "/abs/path/project/src",
-  "output_dir": "/abs/path/records/harness-output"
+  "output_dir": "/abs/path/../dsh-workflow-tmp/harness-output"
 }
 ```
 
@@ -340,7 +340,7 @@ EGO Skill 是**额外安装的本地 Skill**（`npx skills add citrolabs/ego-lit
 ego_browser:
   cli_path: ego-browser
   nodejs_timeout_sec: 30
-  skill_guide_cache: records/ego-browser-skill-guide.md
+  skill_guide_cache: ../dsh-workflow-tmp/ego-browser-skill-guide.md
   auto_refresh_guide: true
   skill_whitelist: [snapshot, capture, screenshot, evaluate, extract, fetch, cdp, wait_for, handoff]
   cdp_endpoint: http://127.0.0.1:9222   # cdp 模式使用

@@ -5,7 +5,7 @@
 
 workflow:
   name: dsh
-  version: "1.4.0"   # v1.4：新增 UI 覆盖度审计（功能→UI 映射 + 交互深度）
+  version: "1.5.0"   # v1.5：spec 转换、ID 硬校验、资产台账与核心基线
 
 # —— 前置输入：被测项目区 ——
 project:
@@ -23,8 +23,9 @@ tests:
   api_dir: tests/api
   ui_dir: tests/ui
   functional_dir: tests/functional        # 功能（场景层）执行器；无该目录时退化为按关联关系聚合派生
-  api_base_url: http://127.0.0.1:8000      # 被测服务接口地址（按需修改）
-  ui_base_url: http://127.0.0.1:5173       # 被测前端地址（按需修改）
+  # 被测环境由运行时注入，配置仅保留通用默认示例值
+  api_base_url: "${DSH_API_BASE_URL:-http://127.0.0.1:8000}"
+  ui_base_url: "${DSH_UI_BASE_URL:-http://127.0.0.1:5173}"
   api_timeout: 15                          # 接口超时（秒）
   ui_timeout: 10                           # UI 操作超时（秒）
   ui_mode: ego_skill                       # local=独立 Playwright | cdp=接管已打开浏览器 | ego_skill=EGO CLI+JS
@@ -48,8 +49,19 @@ execute:
   cleanup_cases_before_gen: true           # 生成前清理旧用例（保留 example.*.yaml）
   harness_failure_policy: abort            # abort=生成失败即中止 | continue=继续用已有用例
 
+# —— 用例生成与质量配置（通用能力）——
+generation:
+  mode: spec                               # spec=规格转换 | harness=外部生成引擎
+  spec_adapter_file: config/spec-adapter.yaml
+  quality_file: config/quality.yaml
+  asset_registry_file: config/asset-registry.yaml
+
+# —— 临时数据（仓库外，与 dsh-workflow 同级）——
+paths:
+  temp_root: ../dsh-workflow-tmp           # 所有过程临时数据的根目录，不进分支代码
+
 # —— 过程数据 ——
-records_dir: records                       # 执行记录：records/<run_id>/
+records_dir: ../dsh-workflow-tmp/records   # 执行记录：临时目录/records/<run_id>/
 reports_dir: reports                       # 测试报告：reports/report-<run_id>.md/.json/.html
 providers_file: config/providers.yaml      # 外部 Provider 接入配置（Harness / EGO）
 

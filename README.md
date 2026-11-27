@@ -167,7 +167,7 @@ harness:
   command: "python3 /path/to/harness/run.py --req {requirements} --src {source} --out {output} --run-id {run_id}"
   # http 模式: http_endpoint: http://127.0.0.1:9000/generate
   timeout_sec: 600
-  output_dir: records/harness-output
+  output_dir: ../dsh-workflow-tmp/harness-output
 ```
 
 **产物约定**（适配层自动分发到 cases/ 并校验格式）：`{output}/functional/*.yaml`、`{output}/api/*.yaml`、`{output}/ui/*.yaml`。

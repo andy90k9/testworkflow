@@ -1,0 +1,30 @@
+# 资产台账与核心基线配置（通用，不含项目专属值）
+asset_registry:
+  # 变量语法：${ENV_VAR} 从环境变量读取；留空时回退到 workflow.name / default
+  project_code: "${DSH_PROJECT_CODE}"
+  env_code: "${DSH_ENV_CODE}"
+  spec_code: "${DSH_SPEC_CODE}"
+
+  run_code_pattern: "{project}-{env}-{date}-{seq}"
+  date_format: "%Y%m%d"
+  seq_width: 3
+
+  git_enabled: true
+  tables:
+    registry: dsh_asset_registry
+    baseline: dsh_case_baseline
+
+  asset_globs:
+    spec: [project/requirements/*.json]
+    case: [cases/*/*.yaml]
+    script: [scripts/*.py, scripts/case_gen/*.py]
+    report: [reports/*.md, reports/*.json]
+    ddl: [reports/*.sql]
+    record: [records/current-run.json]
+
+  exclude_globs:
+    - backups/**
+
+  baseline:
+    version_pattern: "baseline-{date}-{seq}"
+    tier: core

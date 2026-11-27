@@ -1,0 +1,297 @@
+- case_id: UI-001
+  run_id: run-20261127-101827
+  title: 匿名访问治理页跳转 SSO
+  module: 登录
+  priority: P0
+  tier: core
+  precondition: 无（显式清空 storageState）
+  related_func: FUNC-001
+  related_req: REG-UI-001
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-001
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: ea6b68d9758c762d030ea744ee7be95279438d08
+  expected: 跳转 SSO 且 URL 含 service/realService；门户受保护页不渲染
+  steps:
+  - action: goto /#/governance
+  - action: wait 2
+  - action: expect_url_contains service=
+  - action: screenshot reg-ui-001
+- case_id: UI-002
+  run_id: run-20261127-101827
+  title: 侧边栏渲染服务端菜单
+  module: 导航
+  priority: P1
+  tier: extension
+  precondition: 已登录
+  related_func: FUNC-003
+  related_req: REG-UI-002
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-002
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 4fdb395afb910f994b2bcf72481ae7b6044c95ed
+  expected: 菜单项 >=6 且含模型广场/Skill/我的申请
+  steps:
+  - action: goto /#/model-market
+  - action: expect_visible nav
+  - action: screenshot reg-ui-002
+- case_id: UI-003
+  run_id: run-20261127-101827
+  title: 卡片数与总数一致
+  module: 模型广场
+  priority: P0
+  tier: core
+  precondition: 已登录；有开放模型
+  related_func: FUNC-004
+  related_req: REG-UI-003
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-003
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 97a150b13d8f8addfce02789e4fc8b32f0d76e6f
+  expected: 卡片数等于“共 N 个模型”的 N
+  steps:
+  - action: goto /#/model-market
+  - action: expect_visible [data-testid="model-grid"]
+  - action: screenshot reg-ui-003
+- case_id: UI-004
+  run_id: run-20261127-101827
+  title: 模型详情与申请入口
+  module: 模型广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；有开放模型
+  related_func: FUNC-005
+  related_req: REG-UI-004
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-004
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 4dbcd9ad71f3488037bddec5dfe77bb459b8d3be
+  expected: 详情面板打开且申请按钮可用
+  steps:
+  - action: goto /
+  - action: click [data-testid="model-card"]
+  - action: expect_visible [data-testid="model-detail-panel"]
+  - action: expect_visible [data-testid="model-detail-apply"]
+  - action: screenshot reg-ui-004
+- case_id: UI-005
+  run_id: run-20261127-101827
+  title: 试用面板初始化与空输入态
+  module: 模型试用
+  priority: P1
+  tier: extension
+  precondition: 已登录；存在 trialEnabled 模型
+  related_func: FUNC-006
+  related_req: REG-UI-005
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-005
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: e6ae17f18abe2970f1400816379c7b2abc59a897
+  expected: 试用面板可打开；输入为空时发送禁用
+  steps:
+  - action: goto /
+  - action: click [data-testid="model-card-trial"]
+  - action: expect_visible [data-testid="model-trial-panel"]
+  - action: expect_visible [data-testid="trial-input"]
+  - action: screenshot reg-ui-005
+- case_id: UI-006
+  run_id: run-20261127-101827
+  title: 流式回答渲染（路由模拟 SSE）
+  module: 模型试用
+  priority: P1
+  tier: extension
+  precondition: 已登录；route 模拟 /model/trial/chat
+  related_func: FUNC-007
+  related_req: REG-UI-006
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-006
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 367526c3b188280b60a3e438f43603d39fa0305f
+  expected: 回答区出现模拟文本；统计行渲染；结论标注“路由模拟”
+  steps:
+  - action: goto /
+  - action: fill [data-testid="trial-input"] 请自我介绍
+  - action: click [data-testid="trial-send"]
+  - action: expect_text [data-testid="trial-answer"] 回归巡检回复
+  - action: screenshot reg-ui-006
+- case_id: UI-007
+  run_id: run-20261127-101827
+  title: 页签与列表渲染
+  module: 我的申请
+  priority: P0
+  tier: core
+  precondition: 已登录
+  related_func: FUNC-008
+  related_req: REG-UI-007
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-007
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 58dbee3ad7c1fba03a0c92598a5d7ad78cebd134
+  expected: 标题与状态页签可见；列表或空态渲染
+  steps:
+  - action: goto /#/my-applications
+  - action: expect_visible heading:has-text("我的申请")
+  - action: expect_visible navigation:has-text("申请状态筛选")
+  - action: screenshot reg-ui-007
+- case_id: UI-008
+  run_id: run-20261127-101827
+  title: 审核类型页签与队列
+  module: 治理审核
+  priority: P0
+  tier: core
+  precondition: 已登录且具备治理权限
+  related_func: FUNC-009
+  related_req: REG-UI-008
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-008
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: c61e93dccf5c7db71b452862a70b1695930bcca4
+  expected: 审核类型页签可见，队列或空态渲染
+  steps:
+  - action: goto /#/governance?section=review
+  - action: expect_visible [data-testid="review-type-tab-1"]
+  - action: expect_visible navigation:has-text("审核申请类型")
+  - action: screenshot reg-ui-008
+- case_id: UI-009
+  run_id: run-20261127-101827
+  title: Skill 广场列表渲染
+  module: Skill
+  priority: P1
+  tier: extension
+  precondition: 已登录；有已上架 Skill
+  related_func: FUNC-010
+  related_req: REG-UI-009
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-009
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 6f4361b23340843baae2630aaa18aa30efb2bca0
+  expected: 列表区域可见且卡片数 >0
+  steps:
+  - action: goto /#/skill-market
+  - action: expect_visible region
+  - action: screenshot reg-ui-009
+- case_id: UI-010
+  run_id: run-20261127-101827
+  title: 智能体广场列表渲染
+  module: 智能体
+  priority: P1
+  tier: extension
+  precondition: 已登录；有已上架智能体
+  related_func: FUNC-011
+  related_req: REG-UI-010
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-010
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 3defb95c89db642e0ee435fc13c30231d5f7d76e
+  expected: 列表区域可见且卡片数 >0
+  steps:
+  - action: goto /#/agent-market
+  - action: expect_visible region
+  - action: screenshot reg-ui-010
+- case_id: UI-011
+  run_id: run-20261127-101827
+  title: MCP 广场列表渲染
+  module: MCP
+  priority: P1
+  tier: extension
+  precondition: 已登录；有已上架 MCP
+  related_func: FUNC-012
+  related_req: REG-UI-011
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-011
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: f8362d858b5d646ee69e679fdbe269657800f8be
+  expected: 列表区域可见且卡片数 >0
+  steps:
+  - action: goto /#/mcp-market
+  - action: expect_visible region
+  - action: screenshot reg-ui-011
+- case_id: UI-012
+  run_id: run-20261127-101827
+  title: 知识库目录与内容列表
+  module: 知识库
+  priority: P1
+  tier: extension
+  precondition: 已登录；有可维护目录
+  related_func: FUNC-014
+  related_req: REG-UI-012
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-012
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 36c697c06419f0fe8bad72f317af68f27d3f3349
+  expected: 知识库标题、团队目录与内容列表可见
+  steps:
+  - action: goto /#/document-library
+  - action: 'expect_visible page.getByRole(''heading'', { name: /知识库/ })'
+  - action: expect_visible aside[aria-label=
+  - action: expect_visible section[aria-label=
+  - action: screenshot reg-ui-012
+- case_id: UI-013
+  run_id: run-20261127-101827
+  title: 文档预览打开新窗口（路由模拟）
+  module: 知识库
+  priority: P2
+  tier: extension
+  precondition: 已登录；文档库有可查看文档
+  related_func: FUNC-015
+  related_req: REG-UI-013
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-013
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: f748a9936334c3987c53a423746e30f6c05bfd1e
+  expected: 新窗口请求预览地址且带文档参数；结论标注“路由模拟”
+  steps:
+  - action: goto /
+  - action: click button:has-text("查看")
+  - action: screenshot reg-ui-013
+- case_id: UI-014
+  run_id: run-20261127-101827
+  title: 列表 503 错误态与恢复重试（路由模拟）
+  module: 模型广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；route 模拟 503
+  related_func: FUNC-016
+  related_req: REG-UI-014
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-014
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: e8a649f2dae68924251647ac568837fd2402389d
+  expected: 先展示错误态，重试后列表恢复；结论标注“路由模拟”
+  steps:
+  - action: goto /#/model-market
+  - action: expect_visible [data-testid="model-error"]
+  - action: click button:has-text("重试")
+  - action: expect_visible [data-testid="model-card"]
+  - action: screenshot reg-ui-014
+- case_id: UI-015
+  run_id: run-20261127-101827
+  title: 最小权限下不渲染未授权入口（路由模拟）
+  module: 导航
+  priority: P2
+  tier: extension
+  precondition: 已登录；route 改写 /rbac/runtime/context
+  related_func: FUNC-017
+  related_req: REG-UI-015
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-UI-015
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: bbba5cd3be938dc9c9c0a2659f3744601b243801
+  expected: 侧栏不含治理后台等未授权入口；结论标注“路由模拟”
+  steps:
+  - action: goto /#/model-market
+  - action: screenshot reg-ui-015

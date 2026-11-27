@@ -1,0 +1,388 @@
+- case_id: FUNC-001
+  run_id: run-20261127-101827
+  title: 匿名访问受保护页面被引流到 SSO
+  module: A 认证与会话
+  priority: P0
+  tier: core
+  precondition: 测试环境开启登录；清除门户会话
+  related_req: REG-SCN-001
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-001
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 9f6b8c516629c83894e7c3d30f93f3c987851dbf
+  steps:
+  - step: 1
+    action: 匿名打开 /#/governance
+    expected: 302 到 sso-test 登录页，URL 含 service 与 realService；门户受保护页面不渲染
+  - step: 2
+    action: 观察地址栏与首屏
+    expected: 302 到 sso-test 登录页，URL 含 service 与 realService；门户受保护页面不渲染
+- case_id: FUNC-002
+  run_id: run-20261127-101827
+  title: 登录后初始化权限上下文
+  module: A 认证与会话
+  priority: P0
+  tier: core
+  precondition: 已登录；账号具备 portal_admin
+  related_req: REG-SCN-002
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-002
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 1b76a091c49aece9d16fd0504f32fa04baf1c721
+  steps:
+  - step: 1
+    action: 刷新首页
+    expected: 上下文只请求一次；permissions 含 *:*:* 通配、systemAdmin=true、navigation 有层级
+  - step: 2
+    action: 读取 permissions / roleKeys / systemAdmin
+    expected: 上下文只请求一次；permissions 含 *:*:* 通配、systemAdmin=true、navigation 有层级
+- case_id: FUNC-003
+  run_id: run-20261127-101827
+  title: 侧边栏由服务端菜单驱动
+  module: A 认证与会话
+  priority: P1
+  tier: extension
+  precondition: 已登录
+  related_req: REG-SCN-003
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-003
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: d11c1e0529f3518887e168d59f2607dfff5146f9
+  steps:
+  - step: 1
+    action: 进入模型广场
+    expected: 菜单项 >=6，含模型广场、Skill、我的申请；不出现前端硬编码的隐藏项
+  - step: 2
+    action: 读取主导航菜单项
+    expected: 菜单项 >=6，含模型广场、Skill、我的申请；不出现前端硬编码的隐藏项
+- case_id: FUNC-004
+  run_id: run-20261127-101827
+  title: 模型目录分页、筛选与空结果
+  module: B 模型广场
+  priority: P0
+  tier: core
+  precondition: 已登录；存在已开放模型
+  related_req: REG-SCN-010
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-010
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 92d12041e8c2bee51193bf51b0338ace9a5a5b17
+  steps:
+  - step: 1
+    action: 默认查询第 1 页
+    expected: 分页字段齐全；筛选后结果收敛；空关键字返回空集且 code=0
+  - step: 2
+    action: 叠加能力/部署/关键字筛选
+    expected: 分页字段齐全；筛选后结果收敛；空关键字返回空集且 code=0
+  - step: 3
+    action: 查询不存在的关键字
+    expected: 分页字段齐全；筛选后结果收敛；空关键字返回空集且 code=0
+- case_id: FUNC-005
+  run_id: run-20261127-101827
+  title: 模型详情与申请入口
+  module: B 模型广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；列表存在模型
+  related_req: REG-SCN-011
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-011
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 7b9a377b2ec90537fb0068057cb4f2be5c7181f7
+  steps:
+  - step: 1
+    action: 点击首张模型卡片
+    expected: 详情面板展示名称/能力/价格，申请入口可用；非法模型标识返回 400
+  - step: 2
+    action: 观察详情面板与申请按钮
+    expected: 详情面板展示名称/能力/价格，申请入口可用；非法模型标识返回 400
+- case_id: FUNC-006
+  run_id: run-20261127-101827
+  title: 在线试用初始化与开放开关
+  module: B 模型广场
+  priority: P1
+  tier: extension
+  precondition: 存在 trialEnabled=true 与 trialEnabled=false 的模型
+  related_req: REG-SCN-012
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-012
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: b4ecfbea611176b528e2ee978354fe1c0fa04e7a
+  steps:
+  - step: 1
+    action: 打开开放试用模型的试用面板
+    expected: 初始化返回 scenarios/limits/supportsImage；未开放模型返回 409 且前端不渲染试用入口
+  - step: 2
+    action: 请求未开放模型的试用初始化
+    expected: 初始化返回 scenarios/limits/supportsImage；未开放模型返回 409 且前端不渲染试用入口
+- case_id: FUNC-007
+  run_id: run-20261127-101827
+  title: 试用流式渲染与统计（路由模拟）
+  module: B 模型广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；/model/trial/chat 用 route 模拟 SSE
+  related_req: REG-SCN-013
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-013
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 1705bc6ddade98165e8142077228a91d49598c69
+  steps:
+  - step: 1
+    action: 打开试用面板
+    expected: 回答区出现模拟文本；统计行展示首 token/总耗时/输入/输出；结论标注“路由模拟”
+  - step: 2
+    action: 发送问题并模拟流式事件
+    expected: 回答区出现模拟文本；统计行展示首 token/总耗时/输入/输出；结论标注“路由模拟”
+- case_id: FUNC-008
+  run_id: run-20261127-101827
+  title: 我的申请分页与页签
+  module: C 我的申请
+  priority: P0
+  tier: core
+  precondition: 已登录；账号有申请记录
+  related_req: REG-SCN-020
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-020
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 5f54e08a619bd0dd931044fa27daad7ed77e776a
+  steps:
+  - step: 1
+    action: 进入我的申请
+    expected: 页签计数来自接口；列表渲染卡片或空态；分页字段齐全
+  - step: 2
+    action: 切换待审/已通过页签
+    expected: 页签计数来自接口；列表渲染卡片或空态；分页字段齐全
+- case_id: FUNC-009
+  run_id: run-20261127-101827
+  title: 审核队列、详情与处理日志
+  module: D 治理审核
+  priority: P0
+  tier: core
+  precondition: 已登录且具备治理权限；队列有数据
+  related_req: REG-SCN-021
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-021
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 467c08afea0734f0e4efb726bb6d45594d576348
+  steps:
+  - step: 1
+    action: 打开治理后台审核页
+    expected: 队列按业务类型分组；详情含审批轨迹；日志分页正常
+  - step: 2
+    action: 读取队列与首条详情
+    expected: 队列按业务类型分组；详情含审批轨迹；日志分页正常
+  - step: 3
+    action: 查询处理日志
+    expected: 队列按业务类型分组；详情含审批轨迹；日志分页正常
+- case_id: FUNC-010
+  run_id: run-20261127-101827
+  title: Skill 广场与包读取/下载
+  module: E Skill 广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；广场有已上架 Skill
+  related_req: REG-SCN-030
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-030
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: b4f66737fde2f8f49cf8ea149fc4bfc178ebda59
+  steps:
+  - step: 1
+    action: 分页查询广场
+    expected: 分页字段齐全；字典为数组；下载返回签名地址；包清单含 versionId 与 entries；有指引时返回预览地址
+  - step: 2
+    action: 读取计数/场景/部门/标签/来源字典
+    expected: 分页字段齐全；字典为数组；下载返回签名地址；包清单含 versionId 与 entries；有指引时返回预览地址
+  - step: 3
+    action: 对首条 Skill 下载与读取包清单、使用指引
+    expected: 分页字段齐全；字典为数组；下载返回签名地址；包清单含 versionId 与 entries；有指引时返回预览地址
+- case_id: FUNC-011
+  run_id: run-20261127-101827
+  title: 智能体广场与详情
+  module: F 智能体广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；广场有已上架智能体
+  related_req: REG-SCN-031
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-031
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 0d76bd4ce9c272d616147c44305bc635297c7914
+  steps:
+  - step: 1
+    action: 分页查询智能体
+    expected: 分页字段齐全；详情返回名称/可编辑标记等字段
+  - step: 2
+    action: 读取场景与计数
+    expected: 分页字段齐全；详情返回名称/可编辑标记等字段
+  - step: 3
+    action: 打开首条详情
+    expected: 分页字段齐全；详情返回名称/可编辑标记等字段
+- case_id: FUNC-012
+  run_id: run-20261127-101827
+  title: MCP 广场与详情
+  module: G MCP 广场
+  priority: P1
+  tier: extension
+  precondition: 已登录；广场有已上架 MCP
+  related_req: REG-SCN-032
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-032
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: bb1168b20e3d285424a0711863c18355c850ccdd
+  steps:
+  - step: 1
+    action: 查询 MCP 列表
+    expected: 列表为数组且不含凭证密文；详情字段齐全
+  - step: 2
+    action: 读取计数与首条详情
+    expected: 列表为数组且不含凭证密文；详情字段齐全
+- case_id: FUNC-013
+  run_id: run-20261127-101827
+  title: 上下架列表与类型字典
+  module: H 上下架
+  priority: P1
+  tier: extension
+  precondition: 已登录且具备治理权限
+  related_req: REG-SCN-040
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-040
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: bbf5ebffc7693b4059ae0b00d72d7b476e1075f1
+  steps:
+  - step: 1
+    action: 查询上下架分页
+    expected: 分页字段齐全；类型字典为 value/label 数组
+  - step: 2
+    action: 读取业务类型字典
+    expected: 分页字段齐全；类型字典为 value/label 数组
+- case_id: FUNC-014
+  run_id: run-20261127-101827
+  title: 知识库目录、文档与质量
+  module: I 知识库
+  priority: P1
+  tier: extension
+  precondition: 已登录；账号有可维护目录
+  related_req: REG-SCN-041
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-041
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: c4ddc554c69fabf19c5f6ddd93107fd6cd8fa44a
+  steps:
+  - step: 1
+    action: 判定可维护并读取目录树
+    expected: 目录树含 canMaintain；质量概览含评分与数量；文档/问答分页正常；同步信息 bound 明确；预览返回签名地址；非法 contentId
+      拒绝
+  - step: 2
+    action: 查询质量概览、文档与问答分页
+    expected: 目录树含 canMaintain；质量概览含评分与数量；文档/问答分页正常；同步信息 bound 明确；预览返回签名地址；非法 contentId
+      拒绝
+  - step: 3
+    action: 下载导入模板、查询目录同步信息
+    expected: 目录树含 canMaintain；质量概览含评分与数量；文档/问答分页正常；同步信息 bound 明确；预览返回签名地址；非法 contentId
+      拒绝
+  - step: 4
+    action: 用文档 contentId 换取预览地址
+    expected: 目录树含 canMaintain；质量概览含评分与数量；文档/问答分页正常；同步信息 bound 明确；预览返回签名地址；非法 contentId
+      拒绝
+- case_id: FUNC-015
+  run_id: run-20261127-101827
+  title: 文档详情内预览（路由模拟）
+  module: I 知识库
+  priority: P2
+  tier: extension
+  precondition: 已登录；文档库有可查看文档
+  related_req: REG-SCN-042
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-042
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: cc9d4e0f4d851323b666bf19a58de4755aeb2b09
+  steps:
+  - step: 1
+    action: 打开文档详情
+    expected: 新窗口打开预览地址且带上签名参数；结论标注“路由模拟”
+  - step: 2
+    action: 点击预览当前版本
+    expected: 新窗口打开预览地址且带上签名参数；结论标注“路由模拟”
+- case_id: FUNC-016
+  run_id: run-20261127-101827
+  title: 列表接口故障时的错误态与重试
+  module: J 非功能与异常
+  priority: P1
+  tier: extension
+  precondition: 已登录；route 模拟 503
+  related_req: REG-SCN-050
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-050
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 9d27bf7537bfc2fb11fef422ef222942fb900c13
+  steps:
+  - step: 1
+    action: 让 /model/square/page 返回 503
+    expected: 展示可读错误态与重试按钮；恢复后列表重新加载成功；结论标注“路由模拟”
+  - step: 2
+    action: 观察错误态
+    expected: 展示可读错误态与重试按钮；恢复后列表重新加载成功；结论标注“路由模拟”
+  - step: 3
+    action: 恢复后点击重试
+    expected: 展示可读错误态与重试按钮；恢复后列表重新加载成功；结论标注“路由模拟”
+- case_id: FUNC-017
+  run_id: run-20261127-101827
+  title: 服务端收回权限后导航收敛
+  module: J 非功能与异常
+  priority: P2
+  tier: extension
+  precondition: 已登录；route 把上下文权限改为最小集
+  related_req: REG-SCN-051
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-051
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 3edd558fd7ba350e6f025e0823d3a4281cbca864
+  steps:
+  - step: 1
+    action: 用最小权限上下文渲染
+    expected: 不渲染治理后台等未授权入口；结论标注“路由模拟”
+  - step: 2
+    action: 检查侧栏菜单
+    expected: 不渲染治理后台等未授权入口；结论标注“路由模拟”
+- case_id: FUNC-018
+  run_id: run-20261127-101827
+  title: 文件签名、可读链接与非法入参
+  module: J 非功能与异常
+  priority: P1
+  tier: extension
+  precondition: 已登录；账号具备文件服务权限
+  related_req: REG-SCN-060
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-SCN-060
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: b838f41589b176c84306d4d9f24fc9c7e46c7060
+  steps:
+  - step: 1
+    action: 申请知识文档与智能体图标上传签名
+    expected: 签名地址为 http(s)；可读链接可换取；缺文件名返回业务错误码 420100
+  - step: 2
+    action: 用签名地址换可读链接
+    expected: 签名地址为 http(s)；可读链接可换取；缺文件名返回业务错误码 420100
+  - step: 3
+    action: 缺文件名再次申请
+    expected: 签名地址为 http(s)；可读链接可换取；缺文件名返回业务错误码 420100

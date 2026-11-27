@@ -22,7 +22,7 @@ harness:
   http_method: POST
   http_headers: {}                    # 例: {Authorization: "Bearer xxx"}
   timeout_sec: 600
-  output_dir: records/harness-output  # harness 产物落点，适配层会自动分发到 cases/
+  output_dir: ../dsh-workflow-tmp/harness-output  # harness 产物落点（仓库外），适配层会自动分发到 cases/
 
 # —— qa-toolkit / qa-case-pipeline（三层用例：场景 / 接口 / UI）——
 # 把 harness.provider 改成 qa_casepipe 后，用例生成阶段改由 qa-case-pipeline 承担：
@@ -76,7 +76,7 @@ qa_casepipe:
 ego_browser:
   cli_path: ego-browser               # 本地 CLI 路径（onboarding 后通常在 ~/.local/bin）
   nodejs_timeout_sec: 30              # 单次 nodejs 调用超时
-  skill_guide_cache: records/ego-browser-skill-guide.md
+  skill_guide_cache: ../dsh-workflow-tmp/ego-browser-skill-guide.md
   learnings_dir: ""                   # 领域工具包目录；留空则自动探测 ego-browser/learnings
   auto_refresh_guide: true            # true=每次执行 ego-browser skill 刷新指南；false=用缓存
   skill_whitelist:                    # 允许 UI DSL `skill <name> <json_args>` 调用的真实能力

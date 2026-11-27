@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dsh_common import (  # noqa: E402
     load_config, load_providers, ensure_dirs, init_run_id,
-    inject_run_id_into_cases, resolve, WORKFLOW_ROOT,
+    inject_run_id_into_cases, resolve, temp_root, WORKFLOW_ROOT,
 )
 import qa_casepipe  # noqa: E402
 
@@ -37,7 +37,7 @@ PROVIDERS = ("harness", "qa_casepipe")
 
 
 def _harness_output_dir(harness: dict) -> Path:
-    out = harness.get("output_dir") or "records/harness-output"
+    out = harness.get("output_dir") or str(temp_root() / "harness-output")
     p = Path(out)
     return p if p.is_absolute() else (WORKFLOW_ROOT / p).resolve()
 

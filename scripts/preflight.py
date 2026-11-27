@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dsh_common import load_config, load_providers, resolve, collect_yaml_files  # noqa: E402
+from dsh_common import load_config, load_providers, resolve, collect_yaml_files, temp_root  # noqa: E402
 from ego_client import guide_version  # noqa: E402
 import qa_casepipe  # noqa: E402
 
@@ -113,7 +113,7 @@ def main():
     cli = os.environ.get("DSH_EGO_CLI") or ego.get("cli_path") or "ego-browser"
     import shutil
     cli_path = shutil.which(cli)
-    guide_file = resolve(ego.get("skill_guide_cache") or "records/ego-browser-skill-guide.md")
+    guide_file = resolve(ego.get("skill_guide_cache") or str(temp_root() / "ego-browser-skill-guide.md"))
     guide = guide_file.read_text(encoding="utf-8") if guide_file.exists() else ""
 
     checks = {

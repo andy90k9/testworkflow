@@ -20,8 +20,9 @@ except ImportError:
 
 WORKFLOW_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(WORKFLOW_ROOT / "scripts"))
-from dsh_common import mask_sensitive, safe_case_id  # noqa: E402
+from dsh_common import mask_sensitive, safe_case_id, temp_root  # noqa: E402
 
+SCREENSHOT_DIR = temp_root() / "screenshots"
 CASE_DIR = WORKFLOW_ROOT / "cases" / "ui"
 UI_BASE_URL = os.environ.get("DSH_UI_BASE_URL", "http://localhost:3000")
 UI_TIMEOUT = float(os.environ.get("DSH_UI_TIMEOUT", "10"))
@@ -88,7 +89,7 @@ if EGO_MODE:
             steps=case.get("steps") or [],
             base_url=UI_BASE_URL,
             run_id=os.environ.get("DSH_RUN_ID", ""),
-            screenshot_dir=str(WORKFLOW_ROOT / "records" / "screenshots"),
+            screenshot_dir=str(SCREENSHOT_DIR),
         )
         result["run_id"] = result.get("run_id") or os.environ.get("DSH_RUN_ID", "")
         _write_runtime(result)
@@ -123,7 +124,7 @@ else:
         elif verb == "wait":
             time.sleep(float(arg1 or 1))
         elif verb == "screenshot":
-            out = WORKFLOW_ROOT / "records" / "screenshots" / f"{safe_case_id(arg1 or 'shot')}.png"
+            out = SCREENSHOT_DIR / f"{safe_case_id(arg1 or 'shot')}.png"
             out.parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(out), full_page=True)
         elif verb == "expect_url_contains":
@@ -159,7 +160,7 @@ else:
                     result = _run_step(page, str(action))
                     ctx["steps"].append({"step": idx, "action": str(action), "result": result})
                 except Exception as e:
-                    shot_dir = WORKFLOW_ROOT / "records" / "screenshots"
+                    shot_dir = SCREENSHOT_DIR
                     shot_dir.mkdir(parents=True, exist_ok=True)
                     shot = shot_dir / f"fail-{safe_case_id(case_id)}-step{idx}.png"
                     try:

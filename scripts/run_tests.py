@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dsh_common import (  # noqa: E402
     load_config, load_providers, ensure_dirs, init_run_id, now_stamp,
-    resolve_run_dir, read_json, write_json, WORKFLOW_ROOT,
+    resolve_run_dir, read_json, write_json, temp_root, WORKFLOW_ROOT,
 )
 
 RUNTIME_KEYS = (
@@ -227,7 +227,7 @@ def main():
             "DSH_UI_CLOSE_PAGE_AFTER": str(ego.get("close_page_after", True)).lower(),
             "DSH_EGO_MODE": "ego_skill" if str(tests_cfg.get("ui_mode", "local")).lower() == "ego_skill" else "",
             "DSH_EGO_CLI": str(ego.get("cli_path") or "ego-browser"),
-            "DSH_EGO_GUIDE_CACHE": str(ego.get("skill_guide_cache") or "records/ego-browser-skill-guide.md"),
+            "DSH_EGO_GUIDE_CACHE": str(ego.get("skill_guide_cache") or (temp_root() / "ego-browser-skill-guide.md")),
             "DSH_EGO_TIMEOUT": str(ego.get("nodejs_timeout_sec") or 30),
         }
         ui_stats, ui_detail, ui_skip, ui_rc = _run_suite("ui", paths["ui_tests"], run_dir, ui_env)

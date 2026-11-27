@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from dsh_common import load_providers, resolve, safe_case_id, WORKFLOW_ROOT  # noqa: E402
+from dsh_common import load_providers, resolve, safe_case_id, temp_root, WORKFLOW_ROOT  # noqa: E402
 
 GUIDE_END_MARK = "[ego-browser:skill] end of guide"
 
@@ -29,7 +29,7 @@ def cli_path() -> str:
 
 def guide_path() -> Path:
     raw = os.environ.get("DSH_EGO_GUIDE_CACHE") or _ego_cfg().get("skill_guide_cache") \
-        or "records/ego-browser-skill-guide.md"
+        or str(temp_root() / "ego-browser-skill-guide.md")
     return resolve(raw)
 
 
@@ -390,7 +390,7 @@ def run_case(case_id: str, steps: list, base_url: str = "", run_id: str = "",
     guide = get_guide()
     ego = _ego_cfg()
     whitelist = set(ego.get("skill_whitelist") or [])
-    shot_dir = Path(screenshot_dir) if screenshot_dir else WORKFLOW_ROOT / "records" / "screenshots"
+    shot_dir = Path(screenshot_dir) if screenshot_dir else temp_root() / "screenshots"
     shot_dir = shot_dir.resolve()
     shot_dir.mkdir(parents=True, exist_ok=True)
     timeout_ms = timeout_sec() * 1000

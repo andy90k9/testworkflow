@@ -10,3 +10,16 @@ __pycache__/
 playwright-report/
 test-results/
 node_modules/
+
+# 临时数据统一放仓库外 ../dsh-workflow-tmp；此处仅防御性忽略
+records/
+backups/
+
+# 被测项目源码与过程产物不进入通用插件仓库
+project/src/
+project/requirements/*
+!project/requirements/regression-spec.json
+reports/report-*.json
+reports/latest.json
+reports/final-report.md
+reports/case-asset-inventory.json

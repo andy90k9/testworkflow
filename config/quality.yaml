@@ -1,0 +1,14 @@
+# 质量度量阈值（默认值，仅作配置示例；按项目覆盖）
+quality:
+  spec_conversion_rate: 100
+  traceability_rate: 100
+  api_path_coverage: 100
+  ui_interaction_ratio: 50
+  exact_count_assertions: 0
+  reuse_rate: 65
+  flaky_rounds: 3
+  flaky_rate: 2
+  db_backflow_completeness: 100
+  core_pass_rate: 100
+  asset_registry_completeness: 100
+  baseline_coverage: 100

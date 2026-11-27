@@ -1,0 +1,59 @@
+# spec → DSH 用例转换配置（通用，不含项目专属值）
+spec_adapter:
+  # spec 输入：优先使用 spec_file；不存在时按 spec_glob 探测含 scenarios/api/ui 的 JSON
+  spec_file: project/requirements/regression-spec.json
+  spec_glob: project/requirements/*.json
+
+  # 生成编号格式：seq 从 1 开始，按 spec ID 自然排序
+  id_formats:
+    functional: "FUNC-{seq:03d}"
+    api: "API-{seq:03d}"
+    ui: "UI-{seq:03d}"
+
+  # 输出文件；转换前按 backup_existing 备份
+  output:
+    functional: cases/functional/portal.functional.yaml
+    api: cases/api/portal.api.yaml
+    ui: cases/ui/portal.ui.yaml
+  backup_existing: true
+  backup_dir: ../dsh-workflow-tmp/backups/cases   # 仓库外同层级临时目录
+
+  # 未注入 run_id 前使用的占位值，流水线会统一覆盖
+  run_id_placeholder: pending
+
+  # 请求头变量：token 固定写占位符，其他变量从环境变量/spec.meta/已有用例继承
+  header_variables:
+    token: __DSH_API_TOKEN__
+    clientId: "${DSH_CLIENT_ID}"
+
+  # 路径/请求体变量：优先环境变量，其次从备份历史用例按路径模板反推
+  path_variables: {}
+  variables:
+    contentId: "${DSH_CONTENT_ID}"
+    skillId: "${DSH_SKILL_ID}"
+    uploadUrl: "${DSH_UPLOAD_URL}"
+
+  # UI 基础地址：留空则取 workflow.yaml -> tests.ui_base_url
+  ui_base_url: ""
+  ui_wait_seconds: 2
+  ui_screenshot: true
+
+  # 优先级 → 用例分层
+  priority_tiers:
+    P0: core
+    P1: extension
+    P2: extension
+    P3: extension
+
+  # 断言解析
+  assertion:
+    code_json_path: $.code
+    data_key_contains: true
+
+  # ID 完整性硬校验
+  id_check:
+    require_all_spec_ids: true
+    fail_on_duplicate: true
+
+  # 转换报告
+  report: reports/spec-conversion-report.json

@@ -17,19 +17,60 @@ except ImportError:
 WORKFLOW_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = WORKFLOW_ROOT / "config" / "workflow.yaml"
 PROVIDERS_PATH = WORKFLOW_ROOT / "config" / "providers.yaml"
-RUN_ID_FILE = WORKFLOW_ROOT / "records" / "current-run.json"
+DEFAULT_RECORDS_DIR = "records"
+DEFAULT_TEMP_ROOT = "../dsh-workflow-tmp"
+
+
+def records_root(cfg: dict = None) -> Path:
+    """当前批次根目录；配置可指向仓库外临时目录。"""
+    cfg = cfg if cfg is not None else load_config()
+    return resolve(str(cfg.get("records_dir") or DEFAULT_RECORDS_DIR))
+
+
+def run_id_file(cfg: dict = None) -> Path:
+    return records_root(cfg) / "current-run.json"
+
+
+def temp_root(cfg: dict = None) -> Path:
+    """仓库外同层级临时根目录，用于缓存/中间产物，不进分支代码。"""
+    cfg = cfg if cfg is not None else load_config()
+    configured = ((cfg.get("paths") or {}).get("temp_root") or DEFAULT_TEMP_ROOT)
+    return resolve(str(configured))
+
+
+_ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
+
+
+def _expand_env(obj):
+    """递归展开配置中的 ${VAR} / ${VAR:-default} 占位符。"""
+    if isinstance(obj, dict):
+        return {k: _expand_env(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_expand_env(v) for v in obj]
+    if isinstance(obj, str):
+        def repl(match):
+            name = match.group(1)
+            default = match.group(2)
+            value = os.environ.get(name)
+            if value not in (None, ""):
+                return value
+            if default is not None:
+                return default
+            return match.group(0)
+        return _ENV_PATTERN.sub(repl, obj)
+    return obj
 
 
 def load_config() -> dict:
     """读取工作流总配置。"""
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+        cfg = _expand_env(yaml.safe_load(f) or {})
     providers_file = cfg.get("providers_file")
     if providers_file and not cfg.get("_providers"):
         p = resolve(providers_file)
         if p.exists():
             with open(p, "r", encoding="utf-8") as f:
-                cfg["_providers"] = yaml.safe_load(f) or {}
+                cfg["_providers"] = _expand_env(yaml.safe_load(f) or {})
     return cfg
 
 
@@ -38,7 +79,7 @@ def load_providers() -> dict:
     if not PROVIDERS_PATH.exists():
         return {}
     with open(PROVIDERS_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+        return _expand_env(yaml.safe_load(f) or {})
 
 
 def resolve(path_str: str) -> Path:
@@ -53,10 +94,11 @@ def now_stamp(fmt: str = "%Y%m%d-%H%M%S") -> str:
 
 def read_run_id() -> str | None:
     """读取当前批次 run_id，不存在返回 None。"""
-    if not RUN_ID_FILE.exists():
+    path = run_id_file()
+    if not path.exists():
         return None
     try:
-        data = read_json(RUN_ID_FILE)
+        data = read_json(path)
         return data.get("run_id") or None
     except Exception:
         return None
@@ -72,7 +114,7 @@ def init_run_id(force: bool = False) -> str:
         if current:
             return current
     run_id = f"run-{now_stamp()}"
-    write_json(RUN_ID_FILE, {"run_id": run_id, "created_at": datetime.now().isoformat(timespec="seconds")})
+    write_json(run_id_file(), {"run_id": run_id, "created_at": datetime.now().isoformat(timespec="seconds")})
     os.environ["DSH_RUN_ID"] = run_id
     return run_id
 

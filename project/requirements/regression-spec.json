@@ -1,0 +1,1615 @@
+{
+  "meta": {
+    "title": "AI 门户回归用例集（2026-11-20 新生成）",
+    "version": "r1.0",
+    "env": "https://ai-test.dslyy.com + https://ai-center-test.dslyy.com/api/ai-center-portal",
+    "base": "https://ai-center-test.dslyy.com/api/ai-center-portal"
+  },
+  "scenarios": [
+    {
+      "id": "REG-SCN-001",
+      "chain": "A 认证与会话",
+      "name": "匿名访问受保护页面被引流到 SSO",
+      "priority": "P0",
+      "precondition": "测试环境开启登录；清除门户会话",
+      "steps": "1. 匿名打开 /#/governance\n2. 观察地址栏与首屏",
+      "expected": "302 到 sso-test 登录页，URL 含 service 与 realService；门户受保护页面不渲染",
+      "related": [
+        "REG-API-005",
+        "REG-UI-001"
+      ]
+    },
+    {
+      "id": "REG-SCN-002",
+      "chain": "A 认证与会话",
+      "name": "登录后初始化权限上下文",
+      "priority": "P0",
+      "precondition": "已登录；账号具备 portal_admin",
+      "steps": "1. 刷新首页\n2. 读取 permissions / roleKeys / systemAdmin",
+      "expected": "上下文只请求一次；permissions 含 *:*:* 通配、systemAdmin=true、navigation 有层级",
+      "related": [
+        "REG-API-001",
+        "REG-API-002",
+        "REG-UI-002"
+      ]
+    },
+    {
+      "id": "REG-SCN-003",
+      "chain": "A 认证与会话",
+      "name": "侧边栏由服务端菜单驱动",
+      "priority": "P1",
+      "precondition": "已登录",
+      "steps": "1. 进入模型广场\n2. 读取主导航菜单项",
+      "expected": "菜单项 >=6，含模型广场、Skill、我的申请；不出现前端硬编码的隐藏项",
+      "related": [
+        "REG-API-004",
+        "REG-UI-002"
+      ]
+    },
+    {
+      "id": "REG-SCN-010",
+      "chain": "B 模型广场",
+      "name": "模型目录分页、筛选与空结果",
+      "priority": "P0",
+      "precondition": "已登录；存在已开放模型",
+      "steps": "1. 默认查询第 1 页\n2. 叠加能力/部署/关键字筛选\n3. 查询不存在的关键字",
+      "expected": "分页字段齐全；筛选后结果收敛；空关键字返回空集且 code=0",
+      "related": [
+        "REG-API-020",
+        "REG-API-021",
+        "REG-API-022",
+        "REG-UI-003"
+      ]
+    },
+    {
+      "id": "REG-SCN-011",
+      "chain": "B 模型广场",
+      "name": "模型详情与申请入口",
+      "priority": "P1",
+      "precondition": "已登录；列表存在模型",
+      "steps": "1. 点击首张模型卡片\n2. 观察详情面板与申请按钮",
+      "expected": "详情面板展示名称/能力/价格，申请入口可用；非法模型标识返回 400",
+      "related": [
+        "REG-API-023",
+        "REG-API-026",
+        "REG-UI-004"
+      ]
+    },
+    {
+      "id": "REG-SCN-012",
+      "chain": "B 模型广场",
+      "name": "在线试用初始化与开放开关",
+      "priority": "P1",
+      "precondition": "存在 trialEnabled=true 与 trialEnabled=false 的模型",
+      "steps": "1. 打开开放试用模型的试用面板\n2. 请求未开放模型的试用初始化",
+      "expected": "初始化返回 scenarios/limits/supportsImage；未开放模型返回 409 且前端不渲染试用入口",
+      "related": [
+        "REG-API-024",
+        "REG-API-025",
+        "REG-UI-005"
+      ]
+    },
+    {
+      "id": "REG-SCN-013",
+      "chain": "B 模型广场",
+      "name": "试用流式渲染与统计（路由模拟）",
+      "priority": "P1",
+      "precondition": "已登录；/model/trial/chat 用 route 模拟 SSE",
+      "steps": "1. 打开试用面板\n2. 发送问题并模拟流式事件",
+      "expected": "回答区出现模拟文本；统计行展示首 token/总耗时/输入/输出；结论标注“路由模拟”",
+      "related": [
+        "REG-UI-006"
+      ]
+    },
+    {
+      "id": "REG-SCN-020",
+      "chain": "C 我的申请",
+      "name": "我的申请分页与页签",
+      "priority": "P0",
+      "precondition": "已登录；账号有申请记录",
+      "steps": "1. 进入我的申请\n2. 切换待审/已通过页签",
+      "expected": "页签计数来自接口；列表渲染卡片或空态；分页字段齐全",
+      "related": [
+        "REG-API-060",
+        "REG-API-061",
+        "REG-UI-007"
+      ]
+    },
+    {
+      "id": "REG-SCN-021",
+      "chain": "D 治理审核",
+      "name": "审核队列、详情与处理日志",
+      "priority": "P0",
+      "precondition": "已登录且具备治理权限；队列有数据",
+      "steps": "1. 打开治理后台审核页\n2. 读取队列与首条详情\n3. 查询处理日志",
+      "expected": "队列按业务类型分组；详情含审批轨迹；日志分页正常",
+      "related": [
+        "REG-API-062",
+        "REG-API-063",
+        "REG-API-064",
+        "REG-UI-008"
+      ]
+    },
+    {
+      "id": "REG-SCN-030",
+      "chain": "E Skill 广场",
+      "name": "Skill 广场与包读取/下载",
+      "priority": "P1",
+      "precondition": "已登录；广场有已上架 Skill",
+      "steps": "1. 分页查询广场\n2. 读取计数/场景/部门/标签/来源字典\n3. 对首条 Skill 下载与读取包清单、使用指引",
+      "expected": "分页字段齐全；字典为数组；下载返回签名地址；包清单含 versionId 与 entries；有指引时返回预览地址",
+      "related": [
+        "REG-API-030",
+        "REG-API-031",
+        "REG-API-032",
+        "REG-API-033",
+        "REG-API-034",
+        "REG-API-035",
+        "REG-API-036",
+        "REG-API-037",
+        "REG-API-038",
+        "REG-UI-009"
+      ]
+    },
+    {
+      "id": "REG-SCN-031",
+      "chain": "F 智能体广场",
+      "name": "智能体广场与详情",
+      "priority": "P1",
+      "precondition": "已登录；广场有已上架智能体",
+      "steps": "1. 分页查询智能体\n2. 读取场景与计数\n3. 打开首条详情",
+      "expected": "分页字段齐全；详情返回名称/可编辑标记等字段",
+      "related": [
+        "REG-API-040",
+        "REG-API-041",
+        "REG-API-042",
+        "REG-API-043",
+        "REG-UI-010"
+      ]
+    },
+    {
+      "id": "REG-SCN-032",
+      "chain": "G MCP 广场",
+      "name": "MCP 广场与详情",
+      "priority": "P1",
+      "precondition": "已登录；广场有已上架 MCP",
+      "steps": "1. 查询 MCP 列表\n2. 读取计数与首条详情",
+      "expected": "列表为数组且不含凭证密文；详情字段齐全",
+      "related": [
+        "REG-API-050",
+        "REG-API-051",
+        "REG-API-052",
+        "REG-UI-011"
+      ]
+    },
+    {
+      "id": "REG-SCN-040",
+      "chain": "H 上下架",
+      "name": "上下架列表与类型字典",
+      "priority": "P1",
+      "precondition": "已登录且具备治理权限",
+      "steps": "1. 查询上下架分页\n2. 读取业务类型字典",
+      "expected": "分页字段齐全；类型字典为 value/label 数组",
+      "related": [
+        "REG-API-065",
+        "REG-API-066"
+      ]
+    },
+    {
+      "id": "REG-SCN-041",
+      "chain": "I 知识库",
+      "name": "知识库目录、文档与质量",
+      "priority": "P1",
+      "precondition": "已登录；账号有可维护目录",
+      "steps": "1. 判定可维护并读取目录树\n2. 查询质量概览、文档与问答分页\n3. 下载导入模板、查询目录同步信息\n4. 用文档 contentId 换取预览地址",
+      "expected": "目录树含 canMaintain；质量概览含评分与数量；文档/问答分页正常；同步信息 bound 明确；预览返回签名地址；非法 contentId 拒绝",
+      "related": [
+        "REG-API-070",
+        "REG-API-071",
+        "REG-API-072",
+        "REG-API-073",
+        "REG-API-074",
+        "REG-API-075",
+        "REG-API-076",
+        "REG-API-077",
+        "REG-API-078",
+        "REG-UI-012"
+      ]
+    },
+    {
+      "id": "REG-SCN-042",
+      "chain": "I 知识库",
+      "name": "文档详情内预览（路由模拟）",
+      "priority": "P2",
+      "precondition": "已登录；文档库有可查看文档",
+      "steps": "1. 打开文档详情\n2. 点击预览当前版本",
+      "expected": "新窗口打开预览地址且带上签名参数；结论标注“路由模拟”",
+      "related": [
+        "REG-UI-013"
+      ]
+    },
+    {
+      "id": "REG-SCN-060",
+      "chain": "J 非功能与异常",
+      "name": "文件签名、可读链接与非法入参",
+      "priority": "P1",
+      "precondition": "已登录；账号具备文件服务权限",
+      "steps": "1. 申请知识文档与智能体图标上传签名\n2. 用签名地址换可读链接\n3. 缺文件名再次申请",
+      "expected": "签名地址为 http(s)；可读链接可换取；缺文件名返回业务错误码 420100",
+      "related": [
+        "REG-API-006",
+        "REG-API-007",
+        "REG-API-008",
+        "REG-API-009"
+      ]
+    },
+    {
+      "id": "REG-SCN-050",
+      "chain": "J 非功能与异常",
+      "name": "列表接口故障时的错误态与重试",
+      "priority": "P1",
+      "precondition": "已登录；route 模拟 503",
+      "steps": "1. 让 /model/square/page 返回 503\n2. 观察错误态\n3. 恢复后点击重试",
+      "expected": "展示可读错误态与重试按钮；恢复后列表重新加载成功；结论标注“路由模拟”",
+      "related": [
+        "REG-UI-014"
+      ]
+    },
+    {
+      "id": "REG-SCN-051",
+      "chain": "J 非功能与异常",
+      "name": "服务端收回权限后导航收敛",
+      "priority": "P2",
+      "precondition": "已登录；route 把上下文权限改为最小集",
+      "steps": "1. 用最小权限上下文渲染\n2. 检查侧栏菜单",
+      "expected": "不渲染治理后台等未授权入口；结论标注“路由模拟”",
+      "related": [
+        "REG-UI-015"
+      ]
+    }
+  ],
+  "api": [
+    {
+      "id": "REG-API-001",
+      "related": "REG-SCN-002",
+      "module": "权限",
+      "name": "权限上下文初始化",
+      "method": "POST",
+      "url": "{base}/rbac/runtime/context",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{}",
+      "expect": "HTTP 200 code=0；data 含 permissions、navigation、systemAdmin",
+      "negative": "无效 token 返回 401",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/rbac/runtime/context",
+      "body_json": {},
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "permissions",
+          "navigation",
+          "systemAdmin"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-002",
+      "related": "REG-SCN-002",
+      "module": "权限",
+      "name": "个人中心计数",
+      "method": "GET",
+      "url": "{base}/rbac/runtime/personal-center",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回我的申请/审批待办计数",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/rbac/runtime/personal-center",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-003",
+      "related": "REG-SCN-002",
+      "module": "权限",
+      "name": "角色分页查询",
+      "method": "GET",
+      "url": "{base}/rbac/admin/systems/AI_PORTAL/roles?pageNum=1&pageSize=10",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；pageNum/pageSize/total/data 齐全",
+      "negative": "缺少 system:role:list 返回权限错误",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/rbac/admin/systems/AI_PORTAL/roles",
+      "query": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-004",
+      "related": "REG-SCN-003",
+      "module": "权限",
+      "name": "AI_PORTAL 菜单树",
+      "method": "GET",
+      "url": "{base}/rbac/admin/systems/AI_PORTAL/menus",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回菜单树，节点含 menuName/path",
+      "negative": "停用菜单由服务端过滤",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/rbac/admin/systems/AI_PORTAL/menus",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-005",
+      "related": "REG-SCN-001",
+      "module": "权限",
+      "name": "无效 token 访问上下文被拒绝",
+      "method": "POST",
+      "url": "{base}/rbac/runtime/context",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer invalid-regression-token\nContent-Type: application/json",
+      "body": "{}",
+      "expect": "—（负向用例）",
+      "negative": "HTTP 401；不返回 permissions",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/rbac/runtime/context",
+      "body_json": {},
+      "assert": {
+        "status": 401
+      }
+    },
+    {
+      "id": "REG-API-006",
+      "related": "REG-SCN-060",
+      "module": "文件",
+      "name": "知识文档上传签名",
+      "method": "POST",
+      "url": "{base}/sys/files/getUploadUrlByType",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"fileName\": \"reg-check.md\", \"fileClassify\": \"knowledge_document\", \"headers\": {\"Content-Type\": \"text/markdown\"}}",
+      "expect": "HTTP 200 code=0；objectAbsolutePaths[0] 为 http(s) 签名地址",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/sys/files/getUploadUrlByType",
+      "body_json": {
+        "fileName": "reg-check.md",
+        "fileClassify": "knowledge_document",
+        "headers": {
+          "Content-Type": "text/markdown"
+        }
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "objectAbsolutePaths"
+        ]
+      },
+      "capture": {
+        "uploadUrl": "objectAbsolutePaths.0"
+      }
+    },
+    {
+      "id": "REG-API-007",
+      "related": "REG-SCN-060",
+      "module": "文件",
+      "name": "智能体图标上传签名",
+      "method": "POST",
+      "url": "{base}/sys/files/getUploadUrlByType",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"fileName\": \"reg-check.png\", \"fileClassify\": \"agent_icon\", \"headers\": {\"Content-Type\": \"image/png\"}}",
+      "expect": "HTTP 200 code=0；返回可 PUT 的签名地址",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/sys/files/getUploadUrlByType",
+      "body_json": {
+        "fileName": "reg-check.png",
+        "fileClassify": "agent_icon",
+        "headers": {
+          "Content-Type": "image/png"
+        }
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "objectAbsolutePaths"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-008",
+      "related": "REG-SCN-060",
+      "module": "文件",
+      "name": "缺少文件名被拒绝",
+      "method": "POST",
+      "url": "{base}/sys/files/getUploadUrlByType",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"fileClassify\": \"knowledge_document\"}",
+      "expect": "—（负向用例）",
+      "negative": "HTTP 200 但业务 code=420100（文件名称不能为空）",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/sys/files/getUploadUrlByType",
+      "body_json": {
+        "fileClassify": "knowledge_document"
+      },
+      "assert": {
+        "status": 200,
+        "code": 420100
+      }
+    },
+    {
+      "id": "REG-API-009",
+      "related": "REG-SCN-060",
+      "module": "文件",
+      "name": "签名地址换可读链接",
+      "method": "POST",
+      "url": "{base}/sys/files/getReadableUrl",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"url\": \"{{uploadUrl}}\"}",
+      "expect": "HTTP 200 code=0；data 为可读地址字符串",
+      "negative": "非法协议地址被拒绝",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/sys/files/getReadableUrl",
+      "body_json": {
+        "url": "{{uploadUrl}}"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-010",
+      "related": "REG-SCN-030",
+      "module": "字典",
+      "name": "部门列表",
+      "method": "GET",
+      "url": "{base}/dept/list",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回部门数组",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/dept/list",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-011",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "知识库授权人员分页",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/access/users?pageNum=1&pageSize=10",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；total/records 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/knowledge-directory/access/users",
+      "query": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "records"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-020",
+      "related": "REG-SCN-010",
+      "module": "模型广场",
+      "name": "模型目录分页",
+      "method": "POST",
+      "url": "{base}/model/square/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 20, \"capabilityCodes\": [], \"deployType\": null}",
+      "expect": "HTTP 200 code=0；total/data/filters 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/model/square/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "capabilityCodes": [],
+        "deployType": null
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data",
+          "filters"
+        ]
+      },
+      "capture": {
+        "modelId": "data.data.0.id"
+      }
+    },
+    {
+      "id": "REG-API-021",
+      "related": "REG-SCN-010",
+      "module": "模型广场",
+      "name": "模型条件筛选",
+      "method": "POST",
+      "url": "{base}/model/square/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 20, \"capabilityCodes\": [\"long_text\", \"multimodal\"], \"deployType\": 1, \"keyword\": \"deep\"}",
+      "expect": "HTTP 200 code=0；结果收敛且仍返回分页结构",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/model/square/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "capabilityCodes": [
+          "long_text",
+          "multimodal"
+        ],
+        "deployType": 1,
+        "keyword": "deep"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-022",
+      "related": "REG-SCN-010",
+      "module": "模型广场",
+      "name": "模型空结果查询",
+      "method": "POST",
+      "url": "{base}/model/square/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 20, \"capabilityCodes\": [], \"deployType\": null, \"keyword\": \"reg-not-exist-20261120\"}",
+      "expect": "HTTP 200 code=0；返回空集（空态渲染由 UI 用例覆盖）",
+      "negative": "—",
+      "priority": "P2",
+      "kind": "read",
+      "path": "/model/square/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "capabilityCodes": [],
+        "deployType": null,
+        "keyword": "reg-not-exist-20261120"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-023",
+      "related": "REG-SCN-011",
+      "module": "模型广场",
+      "name": "模型详情",
+      "method": "GET",
+      "url": "{base}/model/square/{{modelId}}",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回 modelName/能力/价格等字段",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/model/square/{{modelId}}",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "modelName"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-024",
+      "related": "REG-SCN-012",
+      "module": "模型试用",
+      "name": "试用初始化",
+      "method": "GET",
+      "url": "{base}/model/trial/{{modelId}}/init",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；scenarios/limits/supportsImage 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/model/trial/{{modelId}}/init",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "supportsImage",
+          "limits",
+          "scenarios"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-025",
+      "related": "REG-SCN-012",
+      "module": "模型试用",
+      "name": "未开放试用模型被拒绝",
+      "method": "GET",
+      "url": "{base}/model/trial/4/init",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "—（负向用例）",
+      "negative": "HTTP 409 code=409，提示暂未开放试用",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/model/trial/4/init",
+      "assert": {
+        "status": 409,
+        "code": 409
+      }
+    },
+    {
+      "id": "REG-API-026",
+      "related": "REG-SCN-011",
+      "module": "模型广场",
+      "name": "非法模型标识被拒绝",
+      "method": "GET",
+      "url": "{base}/model/square/not-exist",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "—（负向用例）",
+      "negative": "HTTP 400；不返回模型数据",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/model/square/not-exist",
+      "assert": {
+        "status": 400
+      }
+    },
+    {
+      "id": "REG-API-030",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 广场分页",
+      "method": "POST",
+      "url": "{base}/skill/square/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 20, \"sortBy\": \"publishedTime\"}",
+      "expect": "HTTP 200 code=0；total/data 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/skill/square/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "sortBy": "publishedTime"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      },
+      "capture": {
+        "skillId": "data.data.0.id"
+      }
+    },
+    {
+      "id": "REG-API-031",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 数量统计",
+      "method": "GET",
+      "url": "{base}/skill/square/counts",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回总数",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/skill/square/counts",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-032",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 业务场景字典",
+      "method": "GET",
+      "url": "{base}/skill/scenes",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回场景数组",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/skill/scenes",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-033",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 部门字典",
+      "method": "GET",
+      "url": "{base}/skill/depts",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回部门数组",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/skill/depts",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-034",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 分类标签",
+      "method": "GET",
+      "url": "{base}/skill/category-tags",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回标签数组",
+      "negative": "—",
+      "priority": "P2",
+      "kind": "read",
+      "path": "/skill/category-tags",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-035",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 来源系统",
+      "method": "GET",
+      "url": "{base}/skill/application-sources",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回来源数组",
+      "negative": "—",
+      "priority": "P2",
+      "kind": "read",
+      "path": "/skill/application-sources",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-036",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 下载授权",
+      "method": "POST",
+      "url": "{base}/skill/{{skillId}}/download",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"requestId\": \"reg-download-20261120\"}",
+      "expect": "HTTP 200 code=0；objectUrl/fileName 齐全",
+      "negative": "无权限或未上架时拒绝",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/skill/{{skillId}}/download",
+      "body_json": {
+        "requestId": "reg-download-20261120"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "objectUrl",
+          "fileName"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-037",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 包清单",
+      "method": "GET",
+      "url": "{base}/skill/{{skillId}}/files",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；versionId/entries 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/skill/{{skillId}}/files",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "versionId",
+          "entries"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-038",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 使用指引预览",
+      "method": "POST",
+      "url": "{base}/skill/60/guide/preview",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回 objectUrl",
+      "negative": "无指引的 Skill 返回业务错误",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/skill/60/guide/preview",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "objectUrl"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-040",
+      "related": "REG-SCN-031",
+      "module": "智能体",
+      "name": "智能体广场分页",
+      "method": "POST",
+      "url": "{base}/agent/square/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 20, \"sortBy\": \"publishedTime\"}",
+      "expect": "HTTP 200 code=0；total/data 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/agent/square/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 20,
+        "sortBy": "publishedTime"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      },
+      "capture": {
+        "agentId": "data.data.0.id"
+      }
+    },
+    {
+      "id": "REG-API-041",
+      "related": "REG-SCN-031",
+      "module": "智能体",
+      "name": "智能体数量统计",
+      "method": "GET",
+      "url": "{base}/agent/square/counts",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回总数",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/agent/square/counts",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-042",
+      "related": "REG-SCN-031",
+      "module": "智能体",
+      "name": "智能体场景字典",
+      "method": "GET",
+      "url": "{base}/agent/scenes",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回场景数组",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/agent/scenes",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-043",
+      "related": "REG-SCN-031",
+      "module": "智能体",
+      "name": "智能体详情",
+      "method": "GET",
+      "url": "{base}/agent/{{agentId}}",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回 agentName 等字段",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/agent/{{agentId}}",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "agentName"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-050",
+      "related": "REG-SCN-032",
+      "module": "MCP",
+      "name": "MCP 广场列表",
+      "method": "GET",
+      "url": "{base}/mcp/square",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回数组且不含凭证密文",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/mcp/square",
+      "assert": {
+        "status": 200,
+        "code": 0
+      },
+      "capture": {
+        "mcpId": "0.id"
+      }
+    },
+    {
+      "id": "REG-API-051",
+      "related": "REG-SCN-032",
+      "module": "MCP",
+      "name": "MCP 数量统计",
+      "method": "GET",
+      "url": "{base}/mcp/square/counts",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；total/sceneCounts 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/mcp/square/counts",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "sceneCounts"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-052",
+      "related": "REG-SCN-032",
+      "module": "MCP",
+      "name": "MCP 详情",
+      "method": "GET",
+      "url": "{base}/mcp/{{mcpId}}",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回 mcpName 等字段",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/mcp/{{mcpId}}",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "mcpName"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-060",
+      "related": "REG-SCN-020",
+      "module": "我的申请",
+      "name": "待审申请分页",
+      "method": "POST",
+      "url": "{base}/publish/application/my",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 10, \"displayTab\": \"pending\"}",
+      "expect": "HTTP 200 code=0；total/data 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/publish/application/my",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 10,
+        "displayTab": "pending"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-061",
+      "related": "REG-SCN-020",
+      "module": "我的申请",
+      "name": "已通过申请分页",
+      "method": "POST",
+      "url": "{base}/publish/application/my",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 10, \"displayTab\": \"approved\"}",
+      "expect": "HTTP 200 code=0；total/data 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/publish/application/my",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 10,
+        "displayTab": "approved"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-062",
+      "related": "REG-SCN-021",
+      "module": "治理审核",
+      "name": "模型审核队列分页",
+      "method": "POST",
+      "url": "{base}/publish/application/review/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 10, \"businessType\": 5}",
+      "expect": "HTTP 200 code=0；total/data 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/publish/application/review/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 10,
+        "businessType": 5
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      },
+      "capture": {
+        "reviewNo": "data.data.0.applicationNo"
+      }
+    },
+    {
+      "id": "REG-API-063",
+      "related": "REG-SCN-021",
+      "module": "治理审核",
+      "name": "审核详情",
+      "method": "GET",
+      "url": "{base}/publish/application/review/{{reviewNo}}",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回申请详情与审批轨迹",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/publish/application/review/{{reviewNo}}",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-064",
+      "related": "REG-SCN-021",
+      "module": "治理审核",
+      "name": "审核处理日志分页",
+      "method": "POST",
+      "url": "{base}/publish/application/review/log/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"businessType\": 5, \"pageNum\": 1, \"pageSize\": 10}",
+      "expect": "HTTP 200 code=0；total/records 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/publish/application/review/log/page",
+      "body_json": {
+        "businessType": 5,
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "records"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-065",
+      "related": "REG-SCN-040",
+      "module": "上下架",
+      "name": "上下架分页",
+      "method": "POST",
+      "url": "{base}/publish/shelf/page",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"pageNum\": 1, \"pageSize\": 20}",
+      "expect": "HTTP 200 code=0；total/data 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/publish/shelf/page",
+      "body_json": {
+        "pageNum": 1,
+        "pageSize": 20
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "data"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-066",
+      "related": "REG-SCN-040",
+      "module": "上下架",
+      "name": "业务类型字典",
+      "method": "GET",
+      "url": "{base}/publish/shelf/application-types",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回 value/label 数组",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/publish/shelf/application-types",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-070",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "可维护判定",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/maintainable",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；data 为布尔",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/knowledge-directory/maintainable",
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-071",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "维护目录树",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/tree?scope=maintainable",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；返回目录树数组",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/knowledge-directory/tree",
+      "query": {
+        "scope": "maintainable"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0
+      }
+    },
+    {
+      "id": "REG-API-072",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "质量概览",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/quality/overview",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；overallScore/documentCount/qaCount 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/knowledge-directory/quality/overview",
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "overallScore",
+          "documentCount",
+          "qaCount"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-073",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "文档分页",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/documents?pageNum=1&pageSize=10",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；total/records 齐全",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/knowledge-directory/documents",
+      "query": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "records"
+        ]
+      },
+      "capture": {
+        "contentId": "records.0.contentId"
+      }
+    },
+    {
+      "id": "REG-API-074",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "问答分页",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/qas?pageNum=1&pageSize=10",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；total/records 齐全",
+      "negative": "—",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/knowledge-directory/qas",
+      "query": {
+        "pageNum": 1,
+        "pageSize": 10
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "total",
+          "records"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-075",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "问答导入模板下载",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/qas/import-template",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200；返回文件流",
+      "negative": "无权限时拒绝",
+      "priority": "P2",
+      "kind": "read",
+      "path": "/knowledge-directory/qas/import-template",
+      "assert": {
+        "status": 200
+      }
+    },
+    {
+      "id": "REG-API-076",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "目录同步信息",
+      "method": "GET",
+      "url": "{base}/knowledge-directory/sync-info?directoryId=2&knowledgeType=qa-dataset",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}",
+      "body": "无请求体",
+      "expect": "HTTP 200 code=0；bound 字段明确",
+      "negative": "不存在的目录返回 404",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/knowledge-directory/sync-info",
+      "query": {
+        "directoryId": "2",
+        "knowledgeType": "qa-dataset"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "bound"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-077",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "文档预览换链",
+      "method": "POST",
+      "url": "{base}/sys/files/getPreviewUrl",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"contentId\": \"{{contentId}}\"}",
+      "expect": "HTTP 200 code=0；fileAbsolutePath 为签名地址",
+      "negative": "—",
+      "priority": "P0",
+      "kind": "read",
+      "path": "/sys/files/getPreviewUrl",
+      "body_json": {
+        "contentId": "{{contentId}}"
+      },
+      "assert": {
+        "status": 200,
+        "code": 0,
+        "dataKeys": [
+          "fileAbsolutePath"
+        ]
+      }
+    },
+    {
+      "id": "REG-API-078",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "非法内容 ID 预览被拒绝",
+      "method": "POST",
+      "url": "{base}/sys/files/getPreviewUrl",
+      "headers": "Accept: application/json\nclientId: {{clientId}}\nAuthorization: Bearer {{token}}\nContent-Type: application/json",
+      "body": "{\"contentId\": \"000000\"}",
+      "expect": "—（负向用例）",
+      "negative": "HTTP 400 code=400（ID 格式/存在性校验）",
+      "priority": "P1",
+      "kind": "read",
+      "path": "/sys/files/getPreviewUrl",
+      "body_json": {
+        "contentId": "000000"
+      },
+      "assert": {
+        "status": 400,
+        "code": 400
+      }
+    }
+  ],
+  "ui": [
+    {
+      "id": "REG-UI-001",
+      "related": "REG-SCN-001",
+      "module": "登录",
+      "name": "匿名访问治理页跳转 SSO",
+      "precondition_ui": "无（显式清空 storageState）",
+      "steps_playwright": "const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });\nawait page.goto(`${BASE}/#/governance`);\nawait page.waitForURL(/sso[-.]?\\w*\\.dslbuy\\.com\\/login\\?/, { timeout: 60000 });\nexpect(page.url()).toContain('service=');",
+      "expected": "跳转 SSO 且 URL 含 service/realService；门户受保护页不渲染",
+      "priority": "P0"
+    },
+    {
+      "id": "REG-UI-002",
+      "related": "REG-SCN-003",
+      "module": "导航",
+      "name": "侧边栏渲染服务端菜单",
+      "precondition_ui": "已登录",
+      "steps_playwright": "await page.goto(`${BASE}/#/model-market`);\nconst nav = page.getByRole('navigation').first();\nawait expect(nav).toBeVisible();\nconst items = await page.locator('nav a').allInnerTexts();\nexpect(items.length).toBeGreaterThanOrEqual(6);",
+      "expected": "菜单项 >=6 且含模型广场/Skill/我的申请",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-003",
+      "related": "REG-SCN-010",
+      "module": "模型广场",
+      "name": "卡片数与总数一致",
+      "precondition_ui": "已登录；有开放模型",
+      "steps_playwright": "await page.goto(`${BASE}/#/model-market`);\nawait expect(page.getByTestId('model-grid')).toBeVisible();\nconst cards = await page.getByTestId('model-card').count();\nconst total = Number((await page.getByTestId('model-total').innerText()).match(/(\\d+)/)?.[1]);\nexpect(total).toBe(cards);",
+      "expected": "卡片数等于“共 N 个模型”的 N",
+      "priority": "P0"
+    },
+    {
+      "id": "REG-UI-004",
+      "related": "REG-SCN-011",
+      "module": "模型广场",
+      "name": "模型详情与申请入口",
+      "precondition_ui": "已登录；有开放模型",
+      "steps_playwright": "await page.getByTestId('model-card').first().click();\nawait expect(page.getByTestId('model-detail-panel')).toBeVisible();\nawait expect(page.getByTestId('model-detail-apply')).toBeVisible();",
+      "expected": "详情面板打开且申请按钮可用",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-005",
+      "related": "REG-SCN-012",
+      "module": "模型试用",
+      "name": "试用面板初始化与空输入态",
+      "precondition_ui": "已登录；存在 trialEnabled 模型",
+      "steps_playwright": "await page.getByTestId('model-card-trial').first().click();\nawait expect(page.getByTestId('model-trial-panel')).toBeVisible();\nawait expect(page.getByTestId('trial-input')).toBeVisible();\nawait expect(page.getByTestId('trial-send')).toBeDisabled();",
+      "expected": "试用面板可打开；输入为空时发送禁用",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-006",
+      "related": "REG-SCN-013",
+      "module": "模型试用",
+      "name": "流式回答渲染（路由模拟 SSE）",
+      "precondition_ui": "已登录；route 模拟 /model/trial/chat",
+      "steps_playwright": "await page.route(portalUrl('/model/trial/chat'), route => route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: sse(...) }));\nawait page.getByTestId('trial-input').fill('请自我介绍');\nawait page.getByTestId('trial-send').click();\nawait expect(page.getByTestId('trial-answer')).toContainText('回归巡检回复');",
+      "expected": "回答区出现模拟文本；统计行渲染；结论标注“路由模拟”",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-007",
+      "related": "REG-SCN-020",
+      "module": "我的申请",
+      "name": "页签与列表渲染",
+      "precondition_ui": "已登录",
+      "steps_playwright": "await page.goto(`${BASE}/#/my-applications`);\nawait expect(page.getByRole('heading', { name: '我的申请' })).toBeVisible();\nawait expect(page.getByRole('navigation', { name: '申请状态筛选' })).toBeVisible();",
+      "expected": "标题与状态页签可见；列表或空态渲染",
+      "priority": "P0"
+    },
+    {
+      "id": "REG-UI-008",
+      "related": "REG-SCN-021",
+      "module": "治理审核",
+      "name": "审核类型页签与队列",
+      "precondition_ui": "已登录且具备治理权限",
+      "steps_playwright": "await page.goto(`${BASE}/#/governance?section=review`);\nawait expect(page.getByTestId('review-type-tab-1')).toBeVisible();\nawait expect(page.getByRole('navigation', { name: '审核申请类型' })).toBeVisible();",
+      "expected": "审核类型页签可见，队列或空态渲染",
+      "priority": "P0"
+    },
+    {
+      "id": "REG-UI-009",
+      "related": "REG-SCN-030",
+      "module": "Skill",
+      "name": "Skill 广场列表渲染",
+      "precondition_ui": "已登录；有已上架 Skill",
+      "steps_playwright": "await page.goto(`${BASE}/#/skill-market`);\nconst region = page.getByRole('region', { name: 'Skill 列表，可横向滚动' });\nawait expect(region).toBeVisible();\nexpect(await region.locator('.skill-card-grid > *').count()).toBeGreaterThan(0);",
+      "expected": "列表区域可见且卡片数 >0",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-010",
+      "related": "REG-SCN-031",
+      "module": "智能体",
+      "name": "智能体广场列表渲染",
+      "precondition_ui": "已登录；有已上架智能体",
+      "steps_playwright": "await page.goto(`${BASE}/#/agent-market`);\nconst region = page.getByRole('region', { name: '智能体列表' });\nawait expect(region).toBeVisible();\nexpect(await region.locator('.skill-card-grid > *').count()).toBeGreaterThan(0);",
+      "expected": "列表区域可见且卡片数 >0",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-011",
+      "related": "REG-SCN-032",
+      "module": "MCP",
+      "name": "MCP 广场列表渲染",
+      "precondition_ui": "已登录；有已上架 MCP",
+      "steps_playwright": "await page.goto(`${BASE}/#/mcp-market`);\nconst region = page.getByRole('region', { name: 'MCP 列表' });\nawait expect(region).toBeVisible();\nexpect(await region.locator('.skill-card-grid > *').count()).toBeGreaterThan(0);",
+      "expected": "列表区域可见且卡片数 >0",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-012",
+      "related": "REG-SCN-041",
+      "module": "知识库",
+      "name": "知识库目录与内容列表",
+      "precondition_ui": "已登录；有可维护目录",
+      "steps_playwright": "await page.goto(`${BASE}/#/document-library`);\nawait expect(page.getByRole('heading', { name: /知识库/ })).toBeVisible();\nawait expect(page.locator('aside[aria-label=\"团队目录\"]')).toBeVisible();\nawait expect(page.locator('section[aria-label=\"知识内容列表\"]')).toBeVisible();",
+      "expected": "知识库标题、团队目录与内容列表可见",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-013",
+      "related": "REG-SCN-042",
+      "module": "知识库",
+      "name": "文档预览打开新窗口（路由模拟）",
+      "precondition_ui": "已登录；文档库有可查看文档",
+      "steps_playwright": "await page.route(portalUrl('/sys/files/getPreviewUrl'), route => route.fulfill({ status: 200, body: JSON.stringify({ code: 0, data: { fileAbsolutePath: 'https://example.test/doc.md?sign=abc', serviceUrl: 'https://example.test/preview' } }) }));\nawait page.getByRole('button', { name: '查看' }).first().click();\nconst [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: '预览当前版本' }).click()]);\nexpect(popup.url() || requestUrl).toContain('example.test/preview');",
+      "expected": "新窗口请求预览地址且带文档参数；结论标注“路由模拟”",
+      "priority": "P2"
+    },
+    {
+      "id": "REG-UI-014",
+      "related": "REG-SCN-050",
+      "module": "模型广场",
+      "name": "列表 503 错误态与恢复重试（路由模拟）",
+      "precondition_ui": "已登录；route 模拟 503",
+      "steps_playwright": "await page.route(portalUrl('/model/square/page'), route => route.fulfill({ status: 503, body: '{\"code\":503,\"msg\":\"mock 503\"}' }));\nawait page.goto(`${BASE}/#/model-market`);\nawait expect(page.getByTestId('model-error')).toBeVisible();\nawait page.unroute(portalUrl('/model/square/page'));\nawait page.getByRole('button', { name: '重试' }).click();\nawait expect(page.getByTestId('model-card').first()).toBeVisible();",
+      "expected": "先展示错误态，重试后列表恢复；结论标注“路由模拟”",
+      "priority": "P1"
+    },
+    {
+      "id": "REG-UI-015",
+      "related": "REG-SCN-051",
+      "module": "导航",
+      "name": "最小权限下不渲染未授权入口（路由模拟）",
+      "precondition_ui": "已登录；route 改写 /rbac/runtime/context",
+      "steps_playwright": "await page.route(portalUrl('/rbac/runtime/context'), route => route.fulfill({ status: 200, body: JSON.stringify({ code: 0, data: { permissions: ['portal:model:view'], roleKeys: ['portal_user'], systemAdmin: false, navigation: [{ id: '1', name: '模型广场', path: '/model-market' }] } }) }));\nawait page.goto(`${BASE}/#/model-market`);\nconst texts = await page.locator('nav a').allInnerTexts();\nexpect(texts.join(' ')).not.toContain('治理后台');",
+      "expected": "侧栏不含治理后台等未授权入口；结论标注“路由模拟”",
+      "priority": "P2"
+    }
+  ]
+}

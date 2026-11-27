@@ -1,0 +1,1403 @@
+- case_id: API-001
+  run_id: run-20261127-101827
+  title: 权限上下文初始化
+  module: 权限
+  priority: P0
+  tier: core
+  related_func: FUNC-002
+  related_req: REG-API-001
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-001
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: ebe6df578f51807f849cda317e77caf961864826
+  request:
+    method: POST
+    path: /rbac/runtime/context
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=permissions,navigation,systemAdmin；negative=无效 token 返回 401
+- case_id: API-002
+  run_id: run-20261127-101827
+  title: 个人中心计数
+  module: 权限
+  priority: P1
+  tier: extension
+  related_func: FUNC-002
+  related_req: REG-API-002
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-002
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 0b86a3bad42df29ccfda54b09b69b7987521a65a
+  request:
+    method: GET
+    path: /rbac/runtime/personal-center
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-003
+  run_id: run-20261127-101827
+  title: 角色分页查询
+  module: 权限
+  priority: P1
+  tier: extension
+  related_func: FUNC-002
+  related_req: REG-API-003
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-003
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: f2f0537de1fd7b2feae636cc4fbdfdeddd374c6a
+  request:
+    method: GET
+    path: /rbac/admin/systems/AI_PORTAL/roles
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=缺少 system:role:list 返回权限错误
+- case_id: API-004
+  run_id: run-20261127-101827
+  title: AI_PORTAL 菜单树
+  module: 权限
+  priority: P1
+  tier: extension
+  related_func: FUNC-003
+  related_req: REG-API-004
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-004
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 6d74b4a4eafd1425270ebdfd16e2b5e24f38a88c
+  request:
+    method: GET
+    path: /rbac/admin/systems/AI_PORTAL/menus
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=停用菜单由服务端过滤
+- case_id: API-005
+  run_id: run-20261127-101827
+  title: 无效 token 访问上下文被拒绝
+  module: 权限
+  priority: P0
+  tier: core
+  related_func: FUNC-001
+  related_req: REG-API-005
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-005
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 0e025d17afdbc74fdc493781269e4165aaec8c60
+  request:
+    method: POST
+    path: /rbac/runtime/context
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer invalid-regression-token
+      Content-Type: application/json
+  expect:
+    status_code: 401
+  note: negative=HTTP 401；不返回 permissions
+- case_id: API-006
+  run_id: run-20261127-101827
+  title: 知识文档上传签名
+  module: 文件
+  priority: P0
+  tier: core
+  related_func: FUNC-018
+  related_req: REG-API-006
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-006
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 04c71fa561703aadda078afa9978e9809f0338e0
+  request:
+    method: POST
+    path: /sys/files/getUploadUrlByType
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      fileName: reg-check.md
+      fileClassify: knowledge_document
+      headers:
+        Content-Type: text/markdown
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=objectAbsolutePaths；negative=—
+- case_id: API-007
+  run_id: run-20261127-101827
+  title: 智能体图标上传签名
+  module: 文件
+  priority: P1
+  tier: extension
+  related_func: FUNC-018
+  related_req: REG-API-007
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-007
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 8dd42640be801c87c35d0d619dd405089f5978a3
+  request:
+    method: POST
+    path: /sys/files/getUploadUrlByType
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      fileName: reg-check.png
+      fileClassify: agent_icon
+      headers:
+        Content-Type: image/png
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=objectAbsolutePaths；negative=—
+- case_id: API-008
+  run_id: run-20261127-101827
+  title: 缺少文件名被拒绝
+  module: 文件
+  priority: P1
+  tier: extension
+  related_func: FUNC-018
+  related_req: REG-API-008
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-008
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: ab2cec456985efdd202d751007d7d5b62dd81f6e
+  request:
+    method: POST
+    path: /sys/files/getUploadUrlByType
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      fileClassify: knowledge_document
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 420100
+  note: negative=HTTP 200 但业务 code=420100（文件名称不能为空）
+- case_id: API-009
+  run_id: run-20261127-101827
+  title: 签名地址换可读链接
+  module: 文件
+  priority: P1
+  tier: extension
+  related_func: FUNC-018
+  related_req: REG-API-009
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-009
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 785d16d6d45629e17903618688aedc024b7aa26e
+  request:
+    method: POST
+    path: /sys/files/getReadableUrl
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      url: '{{uploadUrl}}'
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=非法协议地址被拒绝
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    uploadUrl: objectAbsolutePaths.0
+- case_id: API-010
+  run_id: run-20261127-101827
+  title: 部门列表
+  module: 字典
+  priority: P1
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-010
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-010
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: ce8ad031927e8ab66a8176291af1d9b72077aea9
+  request:
+    method: GET
+    path: /dept/list
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-011
+  run_id: run-20261127-101827
+  title: 知识库授权人员分页
+  module: 知识库
+  priority: P1
+  tier: extension
+  related_func: FUNC-014
+  related_req: REG-API-011
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-011
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 3f1185189318861e4c776dc90729c9700a03a550
+  request:
+    method: GET
+    path: /knowledge-directory/access/users
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,records；negative=—
+- case_id: API-012
+  run_id: run-20261127-101827
+  title: 模型目录分页
+  module: 模型广场
+  priority: P0
+  tier: core
+  related_func: FUNC-004
+  related_req: REG-API-020
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-020
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 7590225c1dd8d07140bab93e0e724a0c4ec691f7
+  request:
+    method: POST
+    path: /model/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 20
+      capabilityCodes: []
+      deployType: null
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data,filters；negative=—
+- case_id: API-013
+  run_id: run-20261127-101827
+  title: 模型条件筛选
+  module: 模型广场
+  priority: P1
+  tier: extension
+  related_func: FUNC-004
+  related_req: REG-API-021
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-021
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: cffa057f941cdebaf8741508a564a90f8d39a271
+  request:
+    method: POST
+    path: /model/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 20
+      capabilityCodes:
+      - long_text
+      - multimodal
+      deployType: 1
+      keyword: deep
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-014
+  run_id: run-20261127-101827
+  title: 模型空结果查询
+  module: 模型广场
+  priority: P2
+  tier: extension
+  related_func: FUNC-004
+  related_req: REG-API-022
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-022
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 2044509aff28484dab6545e9fe57e7609b827468
+  request:
+    method: POST
+    path: /model/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 20
+      capabilityCodes: []
+      deployType: null
+      keyword: reg-not-exist-20261120
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-015
+  run_id: run-20261127-101827
+  title: 模型详情
+  module: 模型广场
+  priority: P0
+  tier: core
+  related_func: FUNC-005
+  related_req: REG-API-023
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-023
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 9d8d02a6aae415647e424d10b307f9c342342ced
+  request:
+    method: GET
+    path: /model/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=modelName；negative=—
+- case_id: API-016
+  run_id: run-20261127-101827
+  title: 试用初始化
+  module: 模型试用
+  priority: P0
+  tier: core
+  related_func: FUNC-006
+  related_req: REG-API-024
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-024
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 3e736e8a48a7cd25d14a3f719d31b7b056691a2b
+  request:
+    method: GET
+    path: /model/trial/page/init
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=supportsImage,limits,scenarios；negative=—
+- case_id: API-017
+  run_id: run-20261127-101827
+  title: 未开放试用模型被拒绝
+  module: 模型试用
+  priority: P1
+  tier: extension
+  related_func: FUNC-006
+  related_req: REG-API-025
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-025
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: f92d9974b42c739ccd0a50d45c6bf4f481bfbf65
+  request:
+    method: GET
+    path: /model/trial/4/init
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 409
+    json_path: $.code
+    equals: 409
+  note: negative=HTTP 409 code=409，提示暂未开放试用
+- case_id: API-018
+  run_id: run-20261127-101827
+  title: 非法模型标识被拒绝
+  module: 模型广场
+  priority: P1
+  tier: extension
+  related_func: FUNC-005
+  related_req: REG-API-026
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-026
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: aafbb260c9303622367c38d84eb6a597831a66fa
+  request:
+    method: GET
+    path: /model/square/not-exist
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 400
+  note: negative=HTTP 400；不返回模型数据
+- case_id: API-019
+  run_id: run-20261127-101827
+  title: Skill 广场分页
+  module: Skill
+  priority: P0
+  tier: core
+  related_func: FUNC-010
+  related_req: REG-API-030
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-030
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 30b37f0a8e6a65f8333b3f80ae942d3d6ac73823
+  request:
+    method: POST
+    path: /skill/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 20
+      sortBy: publishedTime
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-020
+  run_id: run-20261127-101827
+  title: Skill 数量统计
+  module: Skill
+  priority: P1
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-031
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-031
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: dc16940233f822305522aa094e4ae211ed50546e
+  request:
+    method: GET
+    path: /skill/square/counts
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-021
+  run_id: run-20261127-101827
+  title: Skill 业务场景字典
+  module: Skill
+  priority: P1
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-032
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-032
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: a04b33be31bb9de76e3eac494ebfa5955412eb05
+  request:
+    method: GET
+    path: /skill/scenes
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-022
+  run_id: run-20261127-101827
+  title: Skill 部门字典
+  module: Skill
+  priority: P1
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-033
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-033
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 923cb1e54b790ae54aaf6d98078d60efbf3ae7b9
+  request:
+    method: GET
+    path: /skill/depts
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-023
+  run_id: run-20261127-101827
+  title: Skill 分类标签
+  module: Skill
+  priority: P2
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-034
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-034
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: d8eee5ece5f3ffaa4080d73f31a1c27d69a5b71c
+  request:
+    method: GET
+    path: /skill/category-tags
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-024
+  run_id: run-20261127-101827
+  title: Skill 来源系统
+  module: Skill
+  priority: P2
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-035
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-035
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 64dd168c759d435f1525282799bcb73447fd52bf
+  request:
+    method: GET
+    path: /skill/application-sources
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-025
+  run_id: run-20261127-101827
+  title: Skill 下载授权
+  module: Skill
+  priority: P0
+  tier: core
+  related_func: FUNC-010
+  related_req: REG-API-036
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-036
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 1aee4e3aa68ab219fb3fd24cb4d89591429755e8
+  request:
+    method: POST
+    path: /skill/{{skillId}}/download
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      requestId: reg-download-20261120
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=objectUrl,fileName；negative=无权限或未上架时拒绝
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    skillId: data.data.0.id
+- case_id: API-026
+  run_id: run-20261127-101827
+  title: Skill 包清单
+  module: Skill
+  priority: P1
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-037
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-037
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: ee4728485cadd757fe59245aaf914ca9b54f68a0
+  request:
+    method: GET
+    path: /skill/{{skillId}}/files
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=versionId,entries；negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    skillId: data.data.0.id
+- case_id: API-027
+  run_id: run-20261127-101827
+  title: Skill 使用指引预览
+  module: Skill
+  priority: P1
+  tier: extension
+  related_func: FUNC-010
+  related_req: REG-API-038
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-038
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 9de7aa137e1467c51e15b182ceb2de33fce98f1d
+  request:
+    method: POST
+    path: /skill/60/guide/preview
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=objectUrl；negative=无指引的 Skill 返回业务错误
+- case_id: API-028
+  run_id: run-20261127-101827
+  title: 智能体广场分页
+  module: 智能体
+  priority: P0
+  tier: core
+  related_func: FUNC-011
+  related_req: REG-API-040
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-040
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 017c90e3f47ab3dc8d13a0304dfa9d2e7c3c3f88
+  request:
+    method: POST
+    path: /agent/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 20
+      sortBy: publishedTime
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-029
+  run_id: run-20261127-101827
+  title: 智能体数量统计
+  module: 智能体
+  priority: P1
+  tier: extension
+  related_func: FUNC-011
+  related_req: REG-API-041
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-041
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: fcb124cacaad20e2a0dc464b07392e1103fd79be
+  request:
+    method: GET
+    path: /agent/square/counts
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total；negative=—
+- case_id: API-030
+  run_id: run-20261127-101827
+  title: 智能体场景字典
+  module: 智能体
+  priority: P1
+  tier: extension
+  related_func: FUNC-011
+  related_req: REG-API-042
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-042
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 1ab60bcf8bf555ab1e49c714190c0ec88138b3df
+  request:
+    method: GET
+    path: /agent/scenes
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-031
+  run_id: run-20261127-101827
+  title: 智能体详情
+  module: 智能体
+  priority: P0
+  tier: core
+  related_func: FUNC-011
+  related_req: REG-API-043
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-043
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 3143ee5b806f0d6f11fab8a3f6441463ba6f8a78
+  request:
+    method: GET
+    path: /agent/square/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=agentName；negative=—
+- case_id: API-032
+  run_id: run-20261127-101827
+  title: MCP 广场列表
+  module: MCP
+  priority: P0
+  tier: core
+  related_func: FUNC-012
+  related_req: REG-API-050
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-050
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 175c6e04f1733bc028fac29cb75c68cc9002a102
+  request:
+    method: GET
+    path: /mcp/square
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-033
+  run_id: run-20261127-101827
+  title: MCP 数量统计
+  module: MCP
+  priority: P1
+  tier: extension
+  related_func: FUNC-012
+  related_req: REG-API-051
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-051
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 444c60239c277d0fc977235814068bbb9f103024
+  request:
+    method: GET
+    path: /mcp/square/counts
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,sceneCounts；negative=—
+- case_id: API-034
+  run_id: run-20261127-101827
+  title: MCP 详情
+  module: MCP
+  priority: P0
+  tier: core
+  related_func: FUNC-012
+  related_req: REG-API-052
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-052
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: fbb6543dc6edd93707faec17edaea8ae08139e99
+  request:
+    method: GET
+    path: /mcp/square
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=mcpName；negative=—
+- case_id: API-035
+  run_id: run-20261127-101827
+  title: 待审申请分页
+  module: 我的申请
+  priority: P0
+  tier: core
+  related_func: FUNC-008
+  related_req: REG-API-060
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-060
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: bc3b810dfab10a7aeaec62e043c329a11c5af102
+  request:
+    method: POST
+    path: /publish/application/my
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 10
+      displayTab: pending
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-036
+  run_id: run-20261127-101827
+  title: 已通过申请分页
+  module: 我的申请
+  priority: P1
+  tier: extension
+  related_func: FUNC-008
+  related_req: REG-API-061
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-061
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 93bca12d29e2039c0bdf6288b78674eda721ffe0
+  request:
+    method: POST
+    path: /publish/application/my
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 10
+      displayTab: approved
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-037
+  run_id: run-20261127-101827
+  title: 模型审核队列分页
+  module: 治理审核
+  priority: P0
+  tier: core
+  related_func: FUNC-009
+  related_req: REG-API-062
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-062
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 0108ff70ee5b23a9111e6698cef19a5f639eaf1e
+  request:
+    method: POST
+    path: /publish/application/review/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 10
+      businessType: 5
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-038
+  run_id: run-20261127-101827
+  title: 审核详情
+  module: 治理审核
+  priority: P1
+  tier: extension
+  related_func: FUNC-009
+  related_req: REG-API-063
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-063
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: f0e97f61b1f230766957fda40bd6039c7c0c6589
+  request:
+    method: GET
+    path: /publish/application/review/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-039
+  run_id: run-20261127-101827
+  title: 审核处理日志分页
+  module: 治理审核
+  priority: P1
+  tier: extension
+  related_func: FUNC-009
+  related_req: REG-API-064
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-064
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: e537b1c74b9567c3d90e3f4cb55be0e314da7fdf
+  request:
+    method: POST
+    path: /publish/application/review/log/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      businessType: 5
+      pageNum: 1
+      pageSize: 10
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,records；negative=—
+- case_id: API-040
+  run_id: run-20261127-101827
+  title: 上下架分页
+  module: 上下架
+  priority: P0
+  tier: core
+  related_func: FUNC-013
+  related_req: REG-API-065
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-065
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 3f62cedb3b5bdd80f1c57153e304f5e8abeddf91
+  request:
+    method: POST
+    path: /publish/shelf/page
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      pageNum: 1
+      pageSize: 20
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,data；negative=—
+- case_id: API-041
+  run_id: run-20261127-101827
+  title: 业务类型字典
+  module: 上下架
+  priority: P1
+  tier: extension
+  related_func: FUNC-013
+  related_req: REG-API-066
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-066
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 1cdc1c4324bc865683a44cc8384944a44cc0c9b9
+  request:
+    method: GET
+    path: /publish/shelf/application-types
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-042
+  run_id: run-20261127-101827
+  title: 可维护判定
+  module: 知识库
+  priority: P0
+  tier: core
+  related_func: FUNC-014
+  related_req: REG-API-070
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-070
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: cacde7e279d264db7325553aead6ff57317e0b9f
+  request:
+    method: GET
+    path: /knowledge-directory/maintainable
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-043
+  run_id: run-20261127-101827
+  title: 维护目录树
+  module: 知识库
+  priority: P0
+  tier: core
+  related_func: FUNC-014
+  related_req: REG-API-071
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-071
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 65b1383fac356622d5eb775fe6a0bf8c62f4ea36
+  request:
+    method: GET
+    path: /knowledge-directory/tree
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: negative=—
+- case_id: API-044
+  run_id: run-20261127-101827
+  title: 质量概览
+  module: 知识库
+  priority: P1
+  tier: extension
+  related_func: FUNC-014
+  related_req: REG-API-072
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-072
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 14bd1cd2c5e51d1372d4e6addd8e502e6c7f373b
+  request:
+    method: GET
+    path: /knowledge-directory/quality/overview
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=overallScore,documentCount,qaCount；negative=—
+- case_id: API-045
+  run_id: run-20261127-101827
+  title: 文档分页
+  module: 知识库
+  priority: P0
+  tier: core
+  related_func: FUNC-014
+  related_req: REG-API-073
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-073
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 175b9c8a3f4094f77adfce846209bdff571a6980
+  request:
+    method: GET
+    path: /knowledge-directory/documents
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,records；negative=—
+- case_id: API-046
+  run_id: run-20261127-101827
+  title: 问答分页
+  module: 知识库
+  priority: P1
+  tier: extension
+  related_func: FUNC-014
+  related_req: REG-API-074
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-074
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 109f1c2559bed589792cf0d2a2289b6ef66df660
+  request:
+    method: GET
+    path: /knowledge-directory/qas
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=total,records；negative=—
+- case_id: API-047
+  run_id: run-20261127-101827
+  title: 问答导入模板下载
+  module: 知识库
+  priority: P2
+  tier: extension
+  related_func: FUNC-014
+  related_req: REG-API-075
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-075
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: d76a7827128ef87719047a03cf310f6cfc984db5
+  request:
+    method: GET
+    path: /knowledge-directory/qas/import-template
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+  note: negative=无权限时拒绝
+- case_id: API-048
+  run_id: run-20261127-101827
+  title: 目录同步信息
+  module: 知识库
+  priority: P1
+  tier: extension
+  related_func: FUNC-014
+  related_req: REG-API-076
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-076
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: feffae7be51e27010e19bd3f89c0858d33e663b5
+  request:
+    method: GET
+    path: /knowledge-directory/sync-info
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+    body:
+      raw: 无请求体
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=bound；negative=不存在的目录返回 404
+- case_id: API-049
+  run_id: run-20261127-101827
+  title: 文档预览换链
+  module: 知识库
+  priority: P0
+  tier: core
+  related_func: FUNC-014
+  related_req: REG-API-077
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-077
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: 9d9fd8d36c1e6b75640cfa0675e73089a278c874
+  request:
+    method: POST
+    path: /sys/files/getPreviewUrl
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      contentId: '{{contentId}}'
+  expect:
+    status_code: 200
+    json_path: $.code
+    equals: 0
+  note: dataKeys=fileAbsolutePath；negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    contentId: records.0.contentId
+- case_id: API-050
+  run_id: run-20261127-101827
+  title: 非法内容 ID 预览被拒绝
+  module: 知识库
+  priority: P1
+  tier: extension
+  related_func: FUNC-014
+  related_req: REG-API-078
+  source_file: project/requirements/regression-spec.json
+  source_id: REG-API-078
+  source_version: r1.0
+  action: reuse_convert
+  spec_hash: aa1d754aaceeef93798520d2d8c40062f9a55924
+  request:
+    method: POST
+    path: /sys/files/getPreviewUrl
+    headers:
+      Accept: application/json
+      clientId: 4d39ab9e836f48d799d990e34ed5cd20
+      Authorization: Bearer __DSH_API_TOKEN__
+      Content-Type: application/json
+    body:
+      contentId: '000000'
+  expect:
+    status_code: 400
+    json_path: $.code
+    equals: 400
+  note: negative=HTTP 400 code=400（ID 格式/存在性校验）
