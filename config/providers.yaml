@@ -76,6 +76,9 @@ qa_casepipe:
 ego_browser:
   cli_path: ego-browser               # 本地 CLI 路径（onboarding 后通常在 ~/.local/bin）
   nodejs_timeout_sec: 30              # 单次 nodejs 调用超时
+  assert_timeout_sec: 8               # 单条断言超时，必须小于 nodejs_timeout_sec
+  task_space_id: ""                   # 复用已有 EGO TaskSpace id；留空则每次新建
+  task_space_name_prefix: dsh         # 新建任务空间名称前缀
   skill_guide_cache: ../dsh-workflow-tmp/ego-browser-skill-guide.md
   learnings_dir: ""                   # 领域工具包目录；留空则自动探测 ego-browser/learnings
   auto_refresh_guide: true            # true=每次执行 ego-browser skill 刷新指南；false=用缓存

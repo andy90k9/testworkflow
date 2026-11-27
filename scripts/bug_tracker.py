@@ -16,6 +16,7 @@
 """
 import argparse
 import hashlib
+import os
 import re
 import sys
 from datetime import datetime
@@ -87,6 +88,14 @@ def error_signature(message: str) -> str:
     return normalize_message(message)
 
 
+def workspace_id() -> str:
+    """当前被测工作区的稳定标识（缺陷台账跨项目共用 temp_root 时的隔离键）。"""
+    root = os.environ.get("DSH_WORKSPACE_ID")
+    if not root:
+        root = str(Path(__file__).resolve().parent.parent)
+    return hashlib.sha1(str(Path(root).resolve()).encode("utf-8")).hexdigest()[:12]
+
+
 def fingerprint(case: dict) -> str:
     """缺陷指纹：同模块 + 同失败特征视为同一根因缺陷。
 
@@ -94,7 +103,10 @@ def fingerprint(case: dict) -> str:
     多条重复缺陷；关联用例统一记录在 `case_ids`。
     """
     module = str(case.get("module") or "").strip().lower()
-    raw = f"{module}|{normalize_message(case.get('message') or '')}"
+    # 指纹带上工作区：同一台机器上用同一 temp_root 跑不同被测系统时，
+    # 不同项目的同名模块不能互相复用缺陷编号。
+    ws = workspace_id()
+    raw = f"{ws}|{module}|{normalize_message(case.get('message') or '')}"
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -169,6 +181,7 @@ def make_bug(case: dict, run_id: str, severity: str = "", title: str = "") -> di
         "screenshot_path": case.get("screenshot_path") or "",
         "reporter": case.get("reporter") or "dsh-workflow",
         "assignee": "",
+        "workspace": workspace_id(),
         "first_run_id": run_id,
         "seen_runs": [run_id] if run_id else [],
         "occurrences": 1,
@@ -330,14 +343,51 @@ def save_ledger(paths: dict, bugs: list) -> Path:
     return path
 
 
+def close_on_pass(bugs: list, passed_case_ids, run_id: str) -> list:
+    """本批次里已经通过的用例，把其仍打开的缺陷置为已关闭（自动验证通过）。
+
+    没有这一步，台账只会越积越多、历史已修复的单永远停在 new，
+    回流出来的缺陷数据就无法作为“当前未修复问题”来看。
+    """
+    ws = workspace_id()
+    passed = {str(c) for c in (passed_case_ids or [])}
+    closed = []
+    for bug in bugs or []:
+        if bug.get("workspace") != ws:
+            continue
+        if bug.get("status") not in OPEN_STATUSES:
+            continue
+        linked = set(bug.get("case_ids") or [])
+        if bug.get("case_id"):
+            linked.add(str(bug["case_id"]))
+        # 只有“关联用例全部通过”才自动关闭，避免一条缺陷挂多用例时误判修复。
+        if not linked or not linked <= passed:
+            continue
+        bug["status"] = STATUS_CLOSED
+        bug["closed_at"] = _now()
+        bug["fixed_at"] = bug.get("fixed_at") or _now()
+        bug.setdefault("history", []).append({
+            "at": _now(), "from": STATUS_NEW, "to": STATUS_CLOSED,
+            "note": f"批次 {run_id} 关联用例全部通过，自动关闭",
+            "by": "dsh-workflow",
+        })
+        closed.append(bug)
+    return closed
+
+
 def batch_snapshot(bugs: list, run_id: str) -> list:
     """批次视角的缺陷清单。
 
     = 本批次发现或复现的缺陷
     + 台账中仍未关闭的缺陷（避免上批次遗留的待修缺陷在本批次丢失）
     """
+    ws = workspace_id()
     rows = []
     for bug in bugs or []:
+        # 只把本工作区的缺陷放进本批次快照，避免别的被测系统遗留单混进来。
+        # 未打 workspace 的历史单来自本工作区引入隔离之前的混合台账，一律不纳入。
+        if bug.get("workspace") != ws:
+            continue
         touched = (run_id in (bug.get("seen_runs") or [])
                    or bug.get("first_run_id") == run_id)
         if touched or bug.get("status") in OPEN_STATUSES:

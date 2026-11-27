@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dsh_common import (  # noqa: E402
     load_config, load_providers, ensure_dirs, read_json, write_json,
-    collect_yaml_files, load_yaml_file, resolve_run_dir,
+    selected_case_files, load_yaml_file, resolve_run_dir,
 )
 
 VERSION = "1.4.0"
@@ -62,7 +62,7 @@ def snapshot_cases(paths: dict) -> dict:
         ("ui", "ui_cases"),
     )
     for case_type, path_key in groups:
-        for path in collect_yaml_files(paths[path_key]):
+        for path in selected_case_files(paths[path_key]):
             if path.name.startswith("example."):
                 continue
             data = load_yaml_file(path) or []

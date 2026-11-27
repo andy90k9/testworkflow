@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """DSH 工作流公共工具模块。"""
+import fnmatch
+import hashlib
 import json
 import os
 import re
+import socket
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -93,7 +97,10 @@ def now_stamp(fmt: str = "%Y%m%d-%H%M%S") -> str:
 
 
 def read_run_id() -> str | None:
-    """读取当前批次 run_id，不存在返回 None。"""
+    """读取当前批次 run_id；环境变量优先，其次是当前批次指针。"""
+    current = os.environ.get("DSH_RUN_ID")
+    if current:
+        return current
     path = run_id_file()
     if not path.exists():
         return None
@@ -172,6 +179,143 @@ def collect_yaml_files(directory: Path, recursive: bool = True):
         return []
     pattern = "**/*.y*ml" if recursive else "*.y*ml"
     return sorted(directory.glob(pattern))
+
+
+def selected_case_files(directory: Path, cfg: dict = None, use_manifest: bool = True) -> list:
+    """按 manifest / spec_hash 筛选本轮用例，避免跨项目陈旧用例混入。
+
+    优先读 DSH_SCOPE_MANIFEST；未设置时按转换报告 spec_hash 过滤。
+    DSH_CASE_SELECTION=off 可临时关闭筛选。
+    """
+    cfg = cfg if cfg is not None else load_config()
+    selection = ((cfg.get("cases") or {}).get("selection") or {})
+    override = os.environ.get("DSH_CASE_SELECTION")
+    enabled = selection.get("enabled", True) if override is None else override
+    if str(enabled).strip().lower() in ("0", "false", "no", "off", "disabled"):
+        return collect_yaml_files(directory)
+
+    manifest_env = os.environ.get("DSH_SCOPE_MANIFEST")
+    if use_manifest and manifest_env:
+        manifest_path = resolve(manifest_env)
+        if not manifest_path.exists():
+            print(f"[case-selection] manifest 不存在: {manifest_path}", file=sys.stderr)
+            return []
+        try:
+            manifest = read_json(manifest_path) or {}
+        except Exception as exc:
+            print(f"[case-selection] manifest 读取失败: {exc}", file=sys.stderr)
+            return []
+        directory = directory.resolve()
+        result = []
+        for paths in (manifest.get("case_files") or {}).values():
+            for item in paths or []:
+                path = resolve(str(item))
+                if path.parent == directory:
+                    result.append(path)
+        return sorted(set(result))
+
+    files = collect_yaml_files(directory)
+    report_path = resolve(str(selection.get("spec_report") or "reports/spec-conversion-report.json"))
+    expected = ""
+    if report_path.exists():
+        try:
+            expected = str((read_json(report_path) or {}).get("spec_hash") or "")
+        except Exception:
+            expected = ""
+    if not expected:
+        print(f"[case-selection] 未找到有效 spec_hash（{report_path}），本轮不筛选用例", file=sys.stderr)
+        return files
+
+    include_globs = selection.get("include_globs") or []
+    exclude_globs = selection.get("exclude_globs") or []
+    selected = []
+    for path in files:
+        try:
+            rel = str(path.resolve().relative_to(WORKFLOW_ROOT))
+        except ValueError:
+            rel = str(path)
+        if include_globs and not any(fnmatch.fnmatch(rel, g) for g in include_globs):
+            continue
+        if any(fnmatch.fnmatch(rel, g) for g in exclude_globs):
+            continue
+        try:
+            data = load_yaml_file(path)
+        except Exception:
+            continue
+        items = data if isinstance(data, list) else [data]
+        if any(isinstance(item, dict) and item.get("spec_bundle_hash") == expected for item in items):
+            selected.append(path)
+    return selected
+
+
+def canonical_hash(obj) -> str:
+    text = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()
+
+
+def scope_manifest_path(cfg: dict, run_id: str) -> Path:
+    template = str(((cfg.get("cases") or {}).get("selection") or {}).get(
+        "manifest_template") or "").strip()
+    if template:
+        return resolve(template.format(run_id=run_id))
+    return records_root(cfg) / run_id / "scope-manifest.json"
+
+
+def mask_url(value: str) -> str:
+    """脱敏 URL 中的 userinfo 与 query 值，保留结构便于审计。"""
+    text = str(value or "")
+    text = re.sub(r"(?i)(https?://)([^/@\s]+)@", r"\1***@", text)
+    return re.sub(r"([?&][^=&#\s]+)=([^&#\s]*)", r"\1=***", text)
+
+
+def acquire_pipeline_lock(path: Path, run_id: str, stale_after_sec: int = 7200) -> tuple:
+    """获取执行锁；返回 (acquired, info)。stale lock 会被清理。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    now = time.time()
+    if path.exists():
+        try:
+            info = read_json(path) or {}
+        except Exception:
+            info = {}
+        pid = int(info.get("pid") or 0)
+        started = float(info.get("started_ts") or 0)
+        alive = False
+        if pid:
+            try:
+                os.kill(pid, 0)
+                alive = True
+            except OSError:
+                alive = False
+        if alive and (not started or now - started < stale_after_sec):
+            return False, info
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    info = {
+        "pid": os.getpid(),
+        "run_id": run_id,
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+        "started_ts": now,
+        "host": socket.gethostname(),
+    }
+    write_json(path, info)
+    return True, info
+
+
+def release_pipeline_lock(path: Path, run_id: str) -> None:
+    if not path.exists():
+        return
+    try:
+        info = read_json(path) or {}
+    except Exception:
+        info = {}
+    if str(info.get("run_id") or "") != str(run_id):
+        return
+    try:
+        path.unlink()
+    except OSError:
+        pass
 
 
 def inject_run_id_into_cases(cfg: dict, paths: dict, run_id: str) -> None:

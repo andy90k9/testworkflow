@@ -18,6 +18,7 @@ checks 结构::
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -34,7 +35,7 @@ except ImportError:
 
 WORKFLOW_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(WORKFLOW_ROOT / "scripts"))
-from dsh_common import mask_sensitive, safe_case_id  # noqa: E402
+from dsh_common import mask_sensitive, safe_case_id, selected_case_files  # noqa: E402
 
 CASE_DIR = WORKFLOW_ROOT / "cases" / "functional"
 API_BASE_URL = os.environ.get("DSH_API_BASE_URL", "http://localhost:8000")
@@ -47,7 +48,7 @@ def _collect_cases():
     cases = []
     if not CASE_DIR.exists():
         return cases
-    for path in sorted(CASE_DIR.glob("*.y*ml")):
+    for path in selected_case_files(CASE_DIR):
         if path.name in IGNORE_FILES:
             continue
         with open(path, "r", encoding="utf-8") as f:
@@ -105,14 +106,72 @@ def _json_get(obj, json_path: str):
     return cur
 
 
+def _api_token() -> str:
+    """功能 checks 直连真实接口时需要鉴权头；token 只在运行期从文件读取。"""
+    global _TOKEN_CACHE
+    if _TOKEN_CACHE is not None:
+        return _TOKEN_CACHE
+    _TOKEN_CACHE = ""
+    for key in ("DSH_API_TOKEN_FILE", "DSH_TOKEN_FILE"):
+        path = os.environ.get(key)
+        if path and Path(path).expanduser().is_file():
+            try:
+                _TOKEN_CACHE = Path(path).expanduser().read_text(encoding="utf-8").strip()
+            except Exception:
+                _TOKEN_CACHE = ""
+            if _TOKEN_CACHE:
+                break
+    return _TOKEN_CACHE
+
+
+_TOKEN_CACHE = None
+
+
+_VAR_PATTERN = re.compile(r"\{\{\s*([A-Za-z0-9_.-]+)\s*\}\}")
+
+
+def _runtime_vars() -> dict:
+    """复用 API 用例落盘的 capture 结果（同一个 run_id 共享运行时变量）。"""
+    run_id = os.environ.get("DSH_RUN_ID", "pending")
+    tmp_root = Path(os.environ.get("DSH_TEMP_ROOT") or (WORKFLOW_ROOT.parent / "dsh-workflow-tmp"))
+    path = tmp_root / "runtime" / f"api-vars-{safe_case_id(run_id)}.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _subst(obj, values: dict):
+    if isinstance(obj, str):
+        return _VAR_PATTERN.sub(lambda m: str(values.get(m.group(1), m.group(0))), obj)
+    if isinstance(obj, dict):
+        return {k: _subst(v, values) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_subst(v, values) for v in obj]
+    return obj
+
+
 def _request(req: dict):
     method = str(req.get("method", "GET")).upper()
     path = req.get("path", "/")
     url = API_BASE_URL.rstrip("/") + "/" + str(path).lstrip("/")
-    params = req.get("params") or {}
-    headers = req.get("headers") or {}
+    params = req.get("params") or req.get("query") or {}
+    headers = dict(req.get("headers") or {})
+    _vars = _runtime_vars()
+    url = _subst(url, _vars)
+    params = _subst(params, _vars)
+    headers = _subst(headers, _vars)
+    req = {**req, "body": _subst(req.get("body"), _vars)}
+    token = _api_token()
+    if token and not any(str(k).lower() == "authorization" for k in headers):
+        headers["Authorization"] = "Bearer " + token
+        headers.setdefault("clientId", os.environ.get("DSH_CLIENT_ID", "4d39ab9e836f48d799d990e34ed5cd20"))
     body = req.get("body")
     if isinstance(body, (dict, list)):
+        if not any(str(k).lower() == "content-type" for k in headers):
+            headers["Content-Type"] = "application/json"
         return requests.request(method, url, headers=headers, params=params,
                                 data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
                                 timeout=API_TIMEOUT)

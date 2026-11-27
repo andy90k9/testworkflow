@@ -38,6 +38,73 @@ spec_adapter:
   ui_wait_seconds: 2
   ui_screenshot: true
 
+  # Playwright getByRole → EGO 可执行 CSS 的映射（项目可按真实 DOM 调整）
+  # EGO 没有 page.locator()/getByRole()，只接受 CSS（含 :has-text 和 >> nth=N）。
+  ui_selector:
+    role_aliases:
+      region: '[role="region"]'
+      navigation: "nav"
+      heading: "h1,h2,h3,h4,h5,h6"
+      button: "button"
+      textbox: "input"
+      link: "a"
+      main: "main"
+      complementary: "aside"
+      banner: "header"
+      list: "ul"
+      listitem: "li"
+    # 带 { name: ... } 时按哪个属性定位：aria-label（页面已给无障碍标签）或文本
+    name_attr:
+      navigation: aria-label
+      region: aria-label
+      heading: text
+      button: text
+      link: text
+      textbox: text
+    name_attr_default: text
+    # 不设全局 nth 后缀：只有显式 .first() 才降级成 " >> nth=0"
+    nth_suffix: ""
+
+  # UI 用例模块 → 页面入口路由（spec 未写 goto 时兜底，避免落到默认首页）
+  ui_routes:
+    登录: /#/governance
+    导航: /#/model-market
+    模型广场: /#/model-market
+    模型试用: /#/model-market
+    我的申请: /#/my-applications
+    治理审核: /#/governance?section=review
+    Skill: /#/skill-market
+    智能体: /#/agent-market
+    MCP: /#/mcp-market
+    知识库: /#/document-library
+
+  # 试用面板：面板内控件需先点击入口按钮才会渲染，否则 fill/click 必然 0 元素命中
+  trial_open_action: 'click [data-testid="model-card-trial"] >> nth=0'
+  trial_panel_selectors:
+    - trial-input
+    - trial-send
+    - trial-turn
+  # spec 里写的回答容器在真实 DOM 中不存在，答案实际渲染在 trial-turn 里
+  selector_overrides:
+    trial-answer: trial-turn
+  # antd 自动给两字中文按钮插空格，按渲染文本对齐
+  text_overrides:
+    重试: 重 试
+
+  # 前提无法在自动化环境复现的用例：显式标记跳过并写明原因，避免记成假失败。
+  # UI-001 需要"匿名未登录"状态，但 EGO 浏览器自带有效 SSO 会话，
+  # 清 cookie + localStorage/sessionStorage 后仍被 SSO 网关直接放行。
+  ui_skip_cases:
+    UI-001: 需匿名未登录态，EGO 会话始终携带有效 SSO，清空 cookie/storage 后仍直接放行
+
+  # EGO DSL 暂不支持的 Playwright 能力；命中后用例标记人工上下文并跳过，避免假失败
+  # 注意：page.route/page.unroute 已由 mock_route/mock_stream（CDP 注入）支持，故不再列入
+  ui_manual_patterns:
+    - browser.newContext
+    - storageState
+    - waitForEvent
+    - newPageContext
+
   # 优先级 → 用例分层
   priority_tiers:
     P0: core

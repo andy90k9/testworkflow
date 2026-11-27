@@ -20,6 +20,9 @@ project/src/
 project/requirements/*
 !project/requirements/regression-spec.json
 reports/report-*.json
+reports/report-*.md
+reports/ui-coverage-*.md
+reports/CHAIN-VERDICT.md
 reports/latest.json
 reports/final-report.md
 reports/case-asset-inventory.json

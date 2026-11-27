@@ -513,6 +513,26 @@ def main():
                 sqls.append(("bug", bsql, bvals))
                 bug_rows += 1
 
+    # 批次快照是本次运行缺陷视图的唯一事实来源：快照里没有的 (run_id, bug_id)
+    # 必须从库中移除，否则别的被测系统/历史批次的单会一直挂在本批次下。
+    if bug_path.exists() and not args.dry_run:
+        snap_ids = [b.get("bug_id") for b in read_json(bug_path)
+                    if isinstance(b, dict) and b.get("bug_id")]
+        with conn.cursor() as cur:
+            if snap_ids:
+                placeholders = ",".join(["%s"] * len(snap_ids))
+                cur.execute(
+                    f"DELETE FROM `{tables.get('bug_table', 'dsh_test_bugs')}` "
+                    f"WHERE run_id=%s AND bug_id NOT IN ({placeholders})",
+                    [run_id, *snap_ids],
+                )
+            else:
+                cur.execute(
+                    f"DELETE FROM `{tables.get('bug_table', 'dsh_test_bugs')}` WHERE run_id=%s",
+                    [run_id],
+                )
+        conn.commit()
+
     counts = {"case": 0, "run": 0, "result": 0, "report": 0, "bug": 0}
     for kind, sql, vals in sqls:
         if args.dry_run:

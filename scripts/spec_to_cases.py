@@ -18,7 +18,7 @@ import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qsl, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dsh_common import (  # noqa: E402
@@ -125,6 +125,14 @@ def _collect_existing_path_values(target: Path, templates: list, adapter: dict) 
                     paths.append(str(value))
 
     values = {}
+    # 不含变量的模板是静态路径（如 /model/square/page）。它们本身是合法用例路径，
+    # 绝不能被当成某个 {{变量}} 的实例来反推值，否则 /model/square/{{modelId}}
+    # 会把静态段 "page" 误判成 modelId。
+    literal_templates = {
+        re.sub(r"\{base\}", "", str(t)) for t in templates
+        if not re.search(r"\{\{", str(t))
+    }
+    literal_paths = {c.split("?", 1)[0] for c in paths if c.split("?", 1)[0] in literal_templates}
     for template in templates:
         parts = re.split(r"(\{\{\s*[A-Za-z0-9_.-]+\s*\}\})", str(template))
         names = [re.sub(r"[{}]", "", p).strip() for p in parts if p.startswith("{{")]
@@ -134,6 +142,8 @@ def _collect_existing_path_values(target: Path, templates: list, adapter: dict) 
             "(.+?)" if p.startswith("{{") else re.escape(p) for p in parts
         ) + "$"
         for candidate in paths:
+            if candidate.split("?", 1)[0] in literal_paths:
+                continue
             match = re.match(pattern, candidate)
             if not match:
                 continue
@@ -247,11 +257,116 @@ def _parse_path_and_params(item: dict, spec: dict, path_values: dict, adapter: d
         raw = raw[len(base):]
     raw = raw.replace("{base}", "")
 
+    # spec 的 path 字段常只含路径，query 单独放在 `query` 字段；两者都需合并。
+    merged_query = ""
+    query_field = item.get("query")
+    if isinstance(query_field, str) and query_field.strip():
+        merged_query = query_field.strip().lstrip("?")
+    elif isinstance(query_field, dict):
+        merged_query = urlencode({str(k): str(v) for k, v in query_field.items() if v is not None})
+
+    url_field = str(item.get("url") or "")
+    if not merged_query and "?" in url_field:
+        merged_query = url_field.split("?", 1)[1]
+
     raw = _resolve_text_vars(raw, spec, path_values, adapter)
     parsed = urlparse(raw)
     path = parsed.path or "/"
     params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    if merged_query:
+        merged_query = _resolve_text_vars(merged_query, spec, path_values, adapter)
+        for key, value in parse_qsl(merged_query, keep_blank_values=True):
+            params.setdefault(key, value)
     return path, params
+
+
+# spec 里用这些占位文本表示"该请求没有请求体"，不能当成真实 body 发出去。
+_NO_BODY_SENTINELS = {"无请求体", "无", "none", "null", "-", "n/a", "无请求参数", "无body"}
+
+
+_IDEMPOTENCY_KEYS = ("requestId", "request_id", "idempotencyKey", "idempotency_key", "reqId")
+
+
+def _uniquify_idempotency(obj, run_id: str):
+    """幂等键（requestId 等）必须每次运行唯一，否则二次执行会被服务端判为重放。
+
+    服务端提示：BizException: 操作请求 ID 已被使用，请重新提交。
+    """
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            if str(k) in _IDEMPOTENCY_KEYS and isinstance(v, str) and v:
+                out[k] = v if (not run_id or v.endswith(str(run_id))) else f"{v}-{run_id}"
+            else:
+                out[k] = _uniquify_idempotency(v, run_id)
+        return out
+    if isinstance(obj, list):
+        return [_uniquify_idempotency(v, run_id) for v in obj]
+    return obj
+
+
+def _functional_checks(item: dict, spec: dict, adapter: dict, run_id: str = "") -> dict:
+    """把场景挂靠的 API 用例转成可机判 checks。
+
+    功能场景的 steps/expected 是自然语言，执行器无法机判；沿 related 里的
+    REG-API-* 生成真实 HTTP 断言，让功能链路能被断言而不是被跳过。
+    """
+    apis = {str(a.get("id")): a for a in (spec.get("api") or [])}
+    checks = []
+    for ref in item.get("related") or []:
+        ref = str(ref)
+        if not ref.startswith("REG-API-"):
+            continue
+        api = apis.get(ref)
+        if not api:
+            continue
+        req = _parse_request(api, spec, {}, adapter) if "_parse_request" in globals() else None
+        method = str(api.get("method", "GET")).upper()
+        path = api.get("path") or ""
+        if not path:
+            continue
+        av = api.get("assert") or {}
+        expect = {"status_code": av.get("status", 200)}
+        if "code" in av:
+            expect["json_path"] = "$.code"
+            expect["equals"] = av["code"]
+        check = {"name": str(api.get("name") or ref), "request": {"method": method, "path": path}}
+        # 有些接口的必填条件在 query 上（如 /knowledge-directory/tree?scope=maintainable），
+        # 丢掉 query 会直接 500。
+        query = api.get("query")
+        if isinstance(query, dict) and query:
+            check["request"]["query"] = query
+        body = api.get("body_json")
+        if body is not None:
+            check["request"]["body"] = _uniquify_idempotency(body, run_id)
+        headers = api.get("headers")
+        if isinstance(headers, str) and headers.strip():
+            parsed = {}
+            for line in headers.splitlines():
+                line = line.strip()
+                if ":" in line and not line.startswith("#"):
+                    k, v = line.split(":", 1)
+                    parsed[k.strip()] = v.strip()
+            headers = parsed
+        if isinstance(headers, dict) and headers:
+            kept = {}
+            for k, v in headers.items():
+                low = str(k).lower()
+                # clientId 由执行器统一注入；Authorization 只在它是占位符时丢弃，
+                # 因为负向用例必须保留显式的非法 token 才能断言 401。
+                if low == "clientid":
+                    continue
+                if low == "authorization" and "{{" in str(v):
+                    continue
+                kept[k] = v
+            if kept:
+                check["request"]["headers"] = kept
+        check["expect"] = expect
+        keys = av.get("dataKeys") or []
+        if keys:
+            check["expect_data_keys"] = keys
+        checks.append(check)
+    return {"checks": checks} if checks else {}
 
 
 def _parse_body(item: dict, spec: dict, values: dict, adapter: dict):
@@ -261,13 +376,19 @@ def _parse_body(item: dict, spec: dict, values: dict, adapter: dict):
         raw = item.get("body")
         if isinstance(raw, (dict, list)):
             body = raw
-        elif isinstance(raw, str) and raw.strip():
-            try:
-                body = json.loads(raw)
-            except Exception:
-                body = {"raw": raw}
+        elif isinstance(raw, str):
+            text = raw.strip()
+            if not text or text.lower() in _NO_BODY_SENTINELS:
+                body = None
+            else:
+                try:
+                    body = json.loads(text)
+                except Exception:
+                    body = {"raw": text}
         else:
-            body = {}
+            body = None
+    if body is None:
+        return None
     return _resolve_object_vars(body, spec, values, adapter)
 
 
@@ -282,20 +403,91 @@ def _parse_steps_text(text: str, expected: str) -> list:
     return steps
 
 
-def _selector(expr: str) -> str:
+def _selector(expr: str, adapter: dict = None) -> str:
+    """把 Playwright locator DSL 降级为 EGO 可执行的 CSS 选择器。
+
+    EGO 的 page 没有 locator()/getByRole()，只吃 CSS（支持 :has-text 与 ">> nth=N"）。
+    因此 getByRole 必须按页面真实无障碍属性（aria-label）或文本精确降级，
+    正则形式的 name 也要能解析，不能把 DSL 原样透传出去。
+    """
+    cfg = ((adapter or {}).get("spec_adapter") or {}).get("ui_selector") or {}
+    outer = (adapter or {}).get("spec_adapter") or {}
+    aliases = cfg.get("role_aliases") or {}
+    name_attr = cfg.get("name_attr") or {}
+    name_attr_default = str(cfg.get("name_attr_default") or "text")
+    nth = str(cfg.get("nth_suffix") or "")
     expr = expr.strip()
+
+    # 只有显式 .first() 才降级为 nth=0，避免误伤多元素场景
+    if ".first()" in expr and not nth:
+        nth = " >> nth=0"
+
+    selected = expr
+    overrides = outer.get("selector_overrides") or {}
     match = re.search(r"getByTestId\(\s*['\"]([^'\"]+)['\"]", expr)
     if match:
-        return f'[data-testid="{match.group(1)}"]'
-    match = re.search(
-        r"getByRole\(\s*['\"]([^'\"]+)['\"]\s*,\s*\{\s*name\s*:\s*['\"]([^'\"]+)['\"]", expr
+        tid = match.group(1)
+        # spec 里的 testid 若在真实 DOM 中不存在，按配置换成真实容器
+        selected = f'[data-testid="{overrides.get(tid, tid)}"]'
+    else:
+        # 同时支持 { name: '文本' } 与 { name: /文本/ }，避免正则字面量截断 DSL
+        match = re.search(
+            r"getByRole\(\s*['\"]([^'\"]+)['\"]\s*,\s*\{\s*name\s*:\s*['\"]([^'\"]+)['\"]", expr
+        ) or re.search(r"getByRole\(\s*['\"]([^'\"]+)['\"]\s*,\s*\{\s*name\s*:\s*/([^/]+)/", expr)
+        if match:
+            role, name = match.group(1), match.group(2)
+            base = aliases.get(role, role)
+            attr = str(name_attr.get(role) or name_attr_default)
+            # antd 会给两字中文按钮插入空格（"重试" → "重 试"），按配置换成渲染后的文本
+            name = str((outer.get("text_overrides") or {}).get(name, name))
+            if attr == "aria-label":
+                selected = f'{base}[aria-label="{name}"]'
+            elif "," in base:
+                # 多标签（如 h1..h6）无法逐一分列，用 :is() 包一层保持单一表达式
+                selected = f':is({base}):has-text("{name}")'
+            else:
+                selected = f'{base}:has-text("{name}")'
+        else:
+            # 无 name 的 getByRole 也要降级，不能把 DSL 原样透传
+            match = re.search(r"getByRole\(\s*['\"]([^'\"]+)['\"]\s*\)", expr)
+            if match:
+                selected = aliases.get(match.group(1), match.group(1))
+            else:
+                # 用反向引用配对引号，避免 locator('aside[aria-label="x"]') 被内层双引号截断
+                match = re.search(r"locator\(\s*(['\"])(.+?)\1\s*\)", expr)
+                if match:
+                    selected = match.group(2)
+    if nth and not selected.endswith(nth):
+        selected = selected + nth
+    return selected
+
+
+def _js_object_to_dict(text: str) -> dict:
+    """把 JS 对象字面量宽松转成 dict（仅支持 mock 里出现的简单键值）。"""
+    out = {}
+    for m in re.finditer(r"([A-Za-z_$][\w$]*)\s*:\s*(['\"])(.*?)\2", text):
+        out[m.group(1)] = m.group(3)
+    return out
+
+
+def _deref(expr: str, variables: dict) -> str:
+    """把 const 变量引用（如 region）还原成它对应的 locator 表达式。"""
+    token = expr.strip().rstrip(";")
+    return variables.get(token, expr)
+
+
+def _route_for(item: dict, spec: dict, adapter: dict) -> str:
+    """按 关联场景步骤 → 模块名映射 的顺序推导页面入口路由。"""
+    related = str(item.get("related") or "")
+    scenario = next(
+        (s for s in ((spec or {}).get("scenarios") or []) if str(s.get("id")) == related), None
     )
-    if match:
-        return f"{match.group(1)}:has-text(\"{match.group(2)}\")"
-    match = re.search(r"locator\(\s*['\"]([^'\"]+)['\"]", expr)
-    if match:
-        return match.group(1)
-    return expr
+    if scenario:
+        match = re.search(r"(/#/[^\s\"\)]+)", str(scenario.get("steps") or ""))
+        if match:
+            return match.group(1)
+    routes = (((adapter or {}).get("spec_adapter") or {}).get("ui_routes") or {})
+    return str(routes.get(str(item.get("module") or "")) or "")
 
 
 def _translate_ui_steps(item: dict, base_url: str, adapter: dict, manual: list, spec: dict = None) -> list:
@@ -303,6 +495,11 @@ def _translate_ui_steps(item: dict, base_url: str, adapter: dict, manual: list, 
     wait = str(cfg.get("ui_wait_seconds", 2))
     js = str(item.get("steps_playwright") or "")
     steps = []
+    # const 变量 → 其 locator 表达式，供后续 region.click() 之类的引用回填
+    variables = {}
+
+    def route_for_current() -> str:
+        return _route_for(item, spec or {}, adapter)
 
     for raw in js.splitlines():
         line = raw.strip()
@@ -311,7 +508,11 @@ def _translate_ui_steps(item: dict, base_url: str, adapter: dict, manual: list, 
         match = re.search(r"page\.goto\(\s*[`'\"]([^`'\"]+)", line)
         if match:
             url = match.group(1).replace("${BASE}", base_url)
-            if base_url and url.startswith("/"):
+            if base_url and (not url or url.rstrip("/") == base_url.rstrip("/")):
+                route = route_for_current()
+                if route:
+                    url = base_url + route
+            elif base_url and url.startswith("/"):
                 url = base_url + url
             steps.append({"action": f"goto {url}"})
             continue
@@ -323,41 +524,123 @@ def _translate_ui_steps(item: dict, base_url: str, adapter: dict, manual: list, 
             steps.append({"action": f"wait {wait}"})
             manual.append(f"{item.get('id')}: waitForURL 正则需人工确认")
             continue
-        if any(flag in line for flag in ("page.route", "page.unroute", "waitForEvent", "Promise.all", ".count()")):
-            manual.append(f"{item.get('id')}: 路由模拟/计数断言需人工补 DSL: {line[:100]}")
+        if "page.unroute" in line:
+            # CDP 注入无法真正撤销，改用 mock_off 在当前页面停用该 mock，等价于 unroute
+            hint = re.search(r"portalUrl\(\s*['\"]([^'\"]+)['\"]", line)
+            if hint:
+                steps.append({"action": f"mock_off {hint.group(1)}"})
+                manual.append(f"{item.get('id')}: unroute 已转为 mock_off（页面内停用 mock）")
+            else:
+                manual.append(f"{item.get('id')}: unroute 无法确定 URL，需人工补: {line[:80]}")
             continue
-        match = re.search(r"await\s+(.+?)\.fill\('([^']*)'\)", line)
+        # page.route(...) → mock_route / mock_stream，用 CDP 注入 fetch 覆盖实现
+        match = re.search(r"page\.route\(\s*[^,]+,\s*route\s*=>\s*route\.fulfill\(\s*\{(.*)\}\s*\)\s*\)", line)
         if match:
-            steps.append({"action": f"fill {_selector(match.group(1))} {match.group(2)}"})
+            opts = match.group(1)
+            url_hint = re.search(r"portalUrl\(\s*['\"]([^'\"]+)['\"]", line) \
+                or re.search(r"['\"]([^'\"]*?/api/[^'\"]*)['\"]", line)
+            needle = url_hint.group(1) if url_hint else ""
+            status_m = re.search(r"status\s*:\s*(\d+)", opts)
+            status = status_m.group(1) if status_m else "200"
+            is_sse = "text/event-stream" in opts or "sse(" in opts
+            if needle:
+                if is_sse:
+                    # 真实流式协议是 event:delta + data:{"text":...}，收尾 event:done。
+                    # 用规范文本回复，避免依赖真实模型输出。
+                    reply = "回归巡检回复"
+                    sse = (
+                        f"event:delta\ndata:{json.dumps({'text': reply}, ensure_ascii=False)}\n\n"
+                        "event:done\ndata:{}\n\n"
+                    )
+                    steps.append({"action": f"mock_stream {needle} {sse}"})
+                else:
+                    body_m = re.search(r"body\s*:\s*(['\"])(.*?)\1", opts)
+                    if body_m:
+                        body = body_m.group(2)
+                    elif "JSON.stringify" in opts:
+                        # JSON.stringify({...}) → 取对象字面量，转成合法 JSON 文本
+                        obj_m = re.search(r"JSON\.stringify\(\s*(\{.*\})\s*\)", opts)
+                        raw_obj = obj_m.group(1) if obj_m else "{}"
+                        body = json.dumps(_js_object_to_dict(raw_obj), ensure_ascii=False)
+                    else:
+                        body = '{"code":503,"msg":"mock 503"}'
+                    steps.append({"action": f"mock_route {needle} {status} {body}"})
+                continue
+            manual.append(f"{item.get('id')}: page.route 无法确定 URL，需人工补: {line[:90]}")
+            continue
+        if any(flag in line for flag in ("page.route", "waitForEvent", "Promise.all")):
+            manual.append(f"{item.get('id')}: 路由模拟需人工补 DSL: {line[:100]}")
+            continue
+        # 计数断言（卡片数 > 0）转成"网格可见"，等价于"列表非空且已渲染"
+        match = re.search(r"\.locator\((['\"])(.+?)\1\)\.count\(\)", line)
+        if match:
+            steps.append({"action": f"expect_visible {match.group(2)}"})
+            continue
+        # const region = page.getByRole(...)：登记变量，不单独产步骤
+        match = re.search(r"const\s+([A-Za-z_$][\w$]*)\s*=\s*(page\..+?);?\s*$", line)
+        if match:
+            variables[match.group(1)] = match.group(2).rstrip(";")
+            continue
+        match = re.search(r"await\s+(.+?)\.fill\((['\"])(.*?)\2\)", line)
+        if match:
+            steps.append({"action": f"fill {_selector(_deref(match.group(1), variables), adapter)} {match.group(3)}"})
             continue
         match = re.search(r"await\s+(.+?)\.click\(\)", line)
         if match:
-            steps.append({"action": f"click {_selector(match.group(1))}"})
+            steps.append({"action": f"click {_selector(_deref(match.group(1), variables), adapter)}"})
             continue
-        match = re.search(r"expect\((.+?)\)\.toContainText\('([^']*)'\)", line)
+        match = re.search(r"expect\((.+?)\)\.toContainText\((['\"])(.*?)\2\)", line)
         if match:
-            steps.append({"action": f"expect_text {_selector(match.group(1))} {match.group(2)}"})
+            steps.append({"action": f"expect_text {_selector(_deref(match.group(1), variables), adapter)} {match.group(3)}"})
             continue
         match = re.search(r"expect\((.+?)\)\.toBeVisible\(\)", line)
         if match:
-            steps.append({"action": f"expect_visible {_selector(match.group(1))}"})
+            steps.append({"action": f"expect_visible {_selector(_deref(match.group(1), variables), adapter)}"})
             continue
         if line.startswith("const ") or line.startswith("await expect(page.locator"):
             manual.append(f"{item.get('id')}: 复杂 JS 断言需人工确认: {line[:100]}")
 
     if not any(s["action"].startswith("goto ") for s in steps):
-        related = str(item.get("related") or "")
-        scenario = next(
-            (s for s in ((spec or {}).get("scenarios") or []) if str(s.get("id")) == related), None
-        )
-        route = ""
-        if scenario:
-            match = re.search(r"(/#/[^\s\"\)]+)", str(scenario.get("steps") or ""))
-            if match:
-                route = match.group(1)
+        route = route_for_current()
         url = (base_url + route) if (base_url and route.startswith("/")) else (route or base_url or "/")
         steps.insert(0, {"action": f"goto {url}"})
-        manual.append(f"{item.get('id')}: 原 JS 无 goto，已按关联场景补齐入口 {url}")
+        manual.append(f"{item.get('id')}: 原 JS 无 goto，已按关联场景/模块补齐入口 {url}")
+
+    # 内容断言优先于 landmark 断言：region/aria-label 缺失是 a11y 缺陷，
+    # 不应遮蔽"列表是否真的渲染"这一用户可见结果（landmark 缺失记入报告单独说明）。
+    def _is_landmark(step) -> bool:
+        action = str(step.get("action") or "")
+        return action.startswith("expect_visible ") and '[role="region"]' in action
+
+    landmarks = [s for s in steps if _is_landmark(s)]
+    if landmarks and len(landmarks) < len(steps):
+        steps[:] = [s for s in steps if not _is_landmark(s)] + landmarks
+
+    # mock 是 CDP "新文档生效"注入，必须排在首个 goto 之前，否则本次导航用不上。
+    mock_verbs = ("mock_route ", "mock_stream ")
+    mocks = [s for s in steps if str(s.get("action") or "").startswith(mock_verbs)]
+    if mocks:
+        rest_steps = [s for s in steps if not str(s.get("action") or "").startswith(mock_verbs)]
+        goto_idx = next(
+            (i for i, s in enumerate(rest_steps) if str(s.get("action") or "").startswith("goto ")),
+            0,
+        )
+        steps[:] = rest_steps[:goto_idx] + mocks + rest_steps[goto_idx:]
+
+    # 试用面板里的控件要先打开面板才存在，否则 fill/click 必然 0 元素命中。
+    trial_selectors = tuple(cfg.get("trial_panel_selectors") or ())
+    if trial_selectors and any(
+        trial_selectors[0] in str(s.get("action") or "") or
+        any(t in str(s.get("action") or "") for t in trial_selectors)
+        for s in steps
+    ) and not any("model-card-trial" in str(s.get("action") or "") for s in steps):
+        opener = str(cfg.get("trial_open_action") or 'click [data-testid="model-card-trial"] >> nth=0')
+        insert_at = next(
+            (i + 1 for i, s in enumerate(steps) if str(s.get("action") or "").startswith("goto ")),
+            0,
+        )
+        steps.insert(insert_at, {"action": opener})
+        manual.append(f"{item.get('id')}: 已自动补 open 试用面板步骤（面板内控件需先展开）")
 
     if cfg.get("ui_screenshot", True):
         safe = re.sub(r"[^A-Za-z0-9_-]", "-", str(item.get("id"))).lower()
@@ -365,6 +648,15 @@ def _translate_ui_steps(item: dict, base_url: str, adapter: dict, manual: list, 
     if not steps:
         steps.append({"action": f"wait {wait}"})
     return steps
+
+
+def _skip_fields(case_id: str, adapter: dict) -> dict:
+    """按配置把"前提在本环境无法复现"的用例标记为跳过，并写明原因。"""
+    reasons = ((adapter or {}).get("spec_adapter") or {}).get("ui_skip_cases") or {}
+    reason = reasons.get(case_id) or reasons.get(str(case_id))
+    if not reason:
+        return {}
+    return {"skip": True, "skip_reason": str(reason)}
 
 
 def _tier(priority, adapter):
@@ -445,6 +737,7 @@ def main() -> None:
 
     spec_path = _find_spec(acfg, paths)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
+    spec_bundle_hash = _sha1(spec)
     spec_version = (spec.get("meta") or {}).get("version", "")
     id_maps = _build_id_maps(spec, adapter)
     run_id = args.run_id or read_run_id() or acfg.get("run_id_placeholder", "pending")
@@ -468,11 +761,17 @@ def main() -> None:
             "source_file": spec_rel,
             **_source_fields(item, adapter, spec_version),
             "steps": _parse_steps_text(item.get("steps", ""), item.get("expected", "")),
+            **_functional_checks(item, spec, adapter, run_id),
         })
 
     api_target = resolve(str((acfg.get("output") or {}).get("api", "cases/api/portal.api.yaml")))
     path_templates = [str(x.get("path") or x.get("url") or "") for x in (spec.get("api") or [])]
     existing_path_values = _collect_existing_path_values(api_target, path_templates, adapter)
+    # spec 里带 capture 的变量由执行器运行时采集，不能沿用历史备份里推断出的旧值，
+    # 否则会把上一次跑出来的脏值固化进用例（例如把静态段 "page" 当成 modelId）。
+    captured_vars = set(_collect_runtime_bindings(spec))
+    for name in captured_vars:
+        existing_path_values.pop(name, None)
 
     for item in sorted(spec.get("api") or [], key=lambda x: _natural_key(x.get("id", ""))):
         sid = str(item.get("id"))
@@ -488,8 +787,11 @@ def main() -> None:
         if params:
             request["params"] = params
         body = _parse_body(item, spec, existing_path_values, adapter)
-        if body:
-            request["body"] = body
+        # 空对象 {} 是 spec 明确要求的请求体（如 POST /rbac/runtime/context），
+        # 只有 None（spec 写了"无请求体"）才真正不带 body。
+        if body is not None:
+            # 幂等键必须每次运行唯一，否则复跑会被服务端当作重放拒绝
+            request["body"] = _uniquify_idempotency(body, run_id)
         expect = _parse_expect(item, adapter)
         note_bits = []
         if (item.get("assert") or {}).get("dataKeys"):
@@ -510,6 +812,8 @@ def main() -> None:
             **_source_fields(item, adapter, spec_version),
             "request": request,
             "expect": expect,
+            # capture 让执行器能从本用例响应里提取变量，供后续用例复用。
+            **({"capture": item["capture"]} if isinstance(item.get("capture"), dict) else {}),
             **({"note": "；".join(note_bits)} if note_bits else {}),
         })
 
@@ -518,6 +822,8 @@ def main() -> None:
         sid = str(item.get("id"))
         priority = str(item.get("priority", "P1"))
         related = item.get("related")
+        raw_js = str(item.get("steps_playwright") or "")
+        manual_reasons = [str(p) for p in (acfg.get("ui_manual_patterns") or []) if str(p) in raw_js]
         ui_cases.append({
             "case_id": id_maps["ui"][sid],
             "run_id": run_id,
@@ -532,6 +838,8 @@ def main() -> None:
             **_source_fields(item, adapter, spec_version),
             "expected": item.get("expected", ""),
             "steps": _translate_ui_steps(item, ui_base, adapter, manual_notes, spec),
+            **({"needs_manual_context": True, "manual_context_reasons": manual_reasons} if manual_reasons else {}),
+            **_skip_fields(id_maps["ui"][sid], adapter),
         })
 
     runtime_bindings = _collect_runtime_bindings(spec)
@@ -549,6 +857,9 @@ def main() -> None:
         "ui": resolve(str(output.get("ui", "cases/ui/portal.ui.yaml"))),
     }
     backup = _backup(list(targets.values()), adapter)
+    for bundle in (functional, api_cases, ui_cases):
+        for case in bundle:
+            case["spec_bundle_hash"] = spec_bundle_hash
     _write_yaml(targets["functional"], functional)
     _write_yaml(targets["api"], api_cases)
     _write_yaml(targets["ui"], ui_cases)
@@ -570,6 +881,7 @@ def main() -> None:
     report = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "spec_file": spec_rel,
+        "spec_hash": spec_bundle_hash,
         "spec_version": spec_version,
         "run_id": run_id,
         "counts": {"functional": len(functional), "api": len(api_cases), "ui": len(ui_cases)},

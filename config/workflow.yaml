@@ -17,6 +17,12 @@ cases:
   functional_dir: cases/functional         # 功能用例（YAML）
   api_dir: cases/api                       # API 用例（YAML，可直接驱动 pytest）
   ui_dir: cases/ui                         # UI 用例（YAML，可直接驱动 Playwright）
+  selection:                               # 只跑当前 spec 生成的用例，避免跨项目污染
+    enabled: true
+    spec_report: reports/spec-conversion-report.json
+    manifest_template: ""                  # 留空则 records_dir/<run_id>/scope-manifest.json
+    include_globs: []
+    exclude_globs: []
 
 # —— 可执行测试 ——
 tests:
@@ -55,6 +61,30 @@ generation:
   spec_adapter_file: config/spec-adapter.yaml
   quality_file: config/quality.yaml
   asset_registry_file: config/asset-registry.yaml
+
+# —— 流水线编排控制 ——
+pipeline:
+  init_run_id:
+    force: false                           # true=忽略 DSH_RUN_ID 强制新批次
+  lock:
+    enabled: true
+    path: ""                               # 留空则 records_dir/.pipeline.lock
+    stale_after_sec: 7200
+  gate:
+    fail_on_empty_cases: true
+    fail_on_count_mismatch: true
+    fail_on_spec_hash_missing: true
+    fail_on_manifest_mismatch: true
+    fail_on_id_check: true
+    fail_on_missing_env: true
+  release:
+    block_on_runtime_skip: false
+    block_on_manual_pending: true
+  exit_code:
+    test_failed: 1
+    pipeline_failed: 2
+    backflow_failed: 4
+    manual_pending: 8
 
 # —— 临时数据（仓库外，与 dsh-workflow 同级）——
 paths:

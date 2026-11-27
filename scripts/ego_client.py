@@ -40,6 +40,17 @@ def timeout_sec() -> int:
         return 30
 
 
+def assert_timeout_ms() -> int:
+    """断言等待上限，留出进程收尾时间，避免子进程超时吞掉断言结果。"""
+    proc = timeout_sec()
+    try:
+        configured = int(os.environ.get("DSH_EGO_ASSERT_TIMEOUT")
+                         or _ego_cfg().get("assert_timeout_sec") or max(1, proc // 3))
+    except (TypeError, ValueError):
+        configured = max(1, proc // 3)
+    return min(configured, max(1, proc - 5)) * 1000
+
+
 def check_installed() -> str | None:
     return shutil.which(cli_path())
 
@@ -107,13 +118,83 @@ def _js(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
-                 case_id: str, whitelist: set, timeout_ms: int) -> list:
-    """把一条 UI DSL 翻译成 ego-browser JS 片段。"""
-    parts = str(action).strip().split(" ", 2)
+def _split_action(action: str) -> tuple:
+    """拆分 `verb selector [value]`，保留选择器内的 `>> nth=N` 与引号内空格。
+
+    普通 split(" ") 会把 `[data-testid="x"] >> nth=0` 拆成两段，
+    导致选择器被截断、nth 丢失，多元素命中的用例全部失败。
+    """
+    text = str(action).strip()
+    parts = text.split(" ", 2)
     verb = parts[0].lower() if parts else ""
-    arg1 = parts[1] if len(parts) > 1 else ""
-    arg2 = parts[2] if len(parts) > 2 else ""
+    if len(parts) < 2:
+        return verb, "", ""
+    rest = text[len(parts[0]):].lstrip()
+    if verb in ("mock_route", "mock_stream"):
+        # 第一个 token 是 URL 片段，其余整体是状态码+响应体 / SSE 文本
+        idx = rest.find(" ")
+        if idx > 0:
+            return verb, rest[:idx].strip(), rest[idx + 1:].strip()
+        return verb, rest, ""
+    if verb in ("mock_off",):
+        return verb, rest.strip(), ""
+    if verb in ("fill", "expect_text", "upload", "download", "press", "select"):
+        # 这些动作的最后一段是取值，选择器允许含空格（>> nth=N）
+        idx = rest.rfind(" ")
+        if idx > 0:
+            return verb, rest[:idx].strip(), rest[idx + 1:].strip()
+        return verb, rest, ""
+    return verb, rest.strip(), ""
+
+
+SESSION_BOOTSTRAP_JS = """
+try {
+  const signedIn = await page.evaluate(() => !!document.querySelector('[data-testid="signed-in-user"]'));
+  if (!signedIn && PAGE_SESSION) {
+    await page.cdp('Page.addScriptToEvaluateOnNewDocument', { source: PAGE_SESSION });
+    await page.reload();
+    await page.waitForLoadState();
+    await new Promise((r) => setTimeout(r, 1500));
+    const ok = await page.evaluate(() => !!document.querySelector('[data-testid="signed-in-user"]'));
+    report.sessionBootstrap = ok ? 'ok' : 'failed';
+  } else if (signedIn) {
+    report.sessionBootstrap = 'existing';
+  }
+} catch (e) { report.sessionBootstrapError = String(e).slice(0, 300); }
+""".strip().splitlines()
+
+
+def _page_session_source() -> str:
+    """用已渲染的 API token 构造前端 portal 会话。
+
+    浏览器 SSO 会话会过期（跳 sso-test 登录页），而 API token 仍然有效；
+    前端把会话放在 localStorage 的 `ai-center-portal:session`，
+    结构为 { accessToken, expiresAt, user: { userId, userName } }。
+    """
+    token = ""
+    for path in (os.environ.get("DSH_API_TOKEN_FILE"), os.environ.get("DSH_TOKEN_FILE")):
+        if path and Path(path).expanduser().is_file():
+            try:
+                token = Path(path).expanduser().read_text(encoding="utf-8").strip()
+            except Exception:
+                token = ""
+            if token:
+                break
+    if not token:
+        return ""
+    payload = (
+        "(() => { try { localStorage.setItem('ai-center-portal:session', JSON.stringify({"
+        f"accessToken: {json.dumps(token)}, expiresAt: Date.now() + 3600 * 1000, "
+        "user: { userId: '905', userName: 'auto' } })); } catch (e) {} })();"
+    )
+    return payload
+
+
+def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
+                 case_id: str, whitelist: set, timeout_ms: int,
+                 has_mock: bool = False) -> list:
+    """把一条 UI DSL 翻译成 ego-browser JS 片段。"""
+    verb, arg1, arg2 = _split_action(action)
     lines = [f"currentStep = {idx};"]
     cid = safe_case_id(case_id)
 
@@ -124,6 +205,11 @@ def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
         url = arg1 if arg1.startswith(("http://", "https://")) else base_url.rstrip("/") + "/" + arg1.lstrip("/")
         lines.append(f"await page.goto({_js(url)});")
         lines.append("await page.waitForLoadState();")
+        if has_mock:
+            # mock 是"新文档生效"注入：同 URL 的 hash 跳转不产生新文档，
+            # 必须强制 reload 一次，注入才会生效（复用的已登录空间里尤其常见）。
+            lines.append("await page.reload();")
+            lines.append("await page.waitForLoadState();")
         step_ok()
     elif verb == "click":
         lines.append(f"await page.click({_js(arg1)}, {{ label: 'dsh click step {idx}' }});")
@@ -192,6 +278,65 @@ def _emit_action(action: str, idx: int, base_url: str, shot_dir: Path,
         lines.append("await page.reload();")
         lines.append("await page.waitForLoadState();")
         step_ok("reload")
+    elif verb == "mock_off":
+        # 用法: mock_off <url包含串>
+        # 关闭指定 mock（等价 Playwright 的 page.unroute）：在页面内把命中上限设为当前次数，
+        # 后续请求回落真实后端。CDP 注入本身无法撤销，故用"停用"实现。
+        needle = arg1
+        lines.append(
+            "await page.evaluate((n) => { (window.__dsh_mocks || []).forEach((m) => {"
+            " if (m.needle.indexOf(n) >= 0 || n.indexOf(m.needle) >= 0) m.limit = m.hits; }); },"
+            f" {_js(needle)});"
+        )
+        step_ok("mock_off")
+    elif verb == "mock_route":
+        # 用法: mock_route <url包含串> <状态码> <响应体JSON> [次数]
+        # 用 CDP addScriptToEvaluateOnNewDocument 注入 fetch 覆盖，
+        # 该注入在 reload / 首次导航后依然生效，等价于 Playwright 的 page.route。
+        # 可选的第 4 段为命中次数上限（模拟 unroute：用满后回落真实请求）。
+        needle = arg1
+        rest = str(arg2 or "").split(" ", 2)
+        try:
+            status = int(rest[0]) if rest and rest[0] else 200
+        except ValueError:
+            raise ValueError(f"mock_route 状态码需为数字: {rest[0] if rest else arg2}")
+        payload = rest[1] if len(rest) > 1 and rest[1] else '{"code":500,"msg":"mock"}'
+        try:
+            limit = int(rest[2]) if len(rest) > 2 and rest[2].strip() else 0
+        except ValueError:
+            limit = 0
+        source = (
+            "(() => { const orig = window.fetch; window.__dsh_mocks = window.__dsh_mocks || [];"
+            f" const entry = {{needle: {_js(needle)}, status: {status}, body: {_js(payload)},"
+            f" limit: {limit}, hits: 0}};"
+            " window.__dsh_mocks.push(entry);"
+            " window.fetch = async (u, o) => { const url = String((u && u.url) || u);"
+            "  const hit = (window.__dsh_mocks || []).find((m) => url.indexOf(m.needle) >= 0"
+            "    && (!m.limit || m.hits < m.limit));"
+            "  if (hit) { hit.hits += 1; return new Response(hit.body, { status: hit.status,"
+            "    headers: { 'Content-Type': 'application/json' } }); }"
+            "  return orig(u, o); }; })();"
+        )
+        lines.append(f"await page.cdp('Page.addScriptToEvaluateOnNewDocument', {{ source: {_js(source)} }});")
+        step_ok("mock_route")
+    elif verb == "mock_stream":
+        # 用法: mock_stream <url包含串> <SSE文本>
+        # 把指定接口替换成一段 SSE 流式响应，用于验证流式渲染。
+        needle = arg1
+        stream = arg2 or "data: ok\\n\\ndata: [DONE]\\n\\n"
+        source = (
+            "(() => { const orig = window.fetch; window.__dsh_streams = window.__dsh_streams || [];"
+            f" window.__dsh_streams.push({{needle: {_js(needle)}, body: {_js(stream)}}});"
+            " window.fetch = async (u, o) => { const url = String((u && u.url) || u);"
+            "  const hit = (window.__dsh_streams || []).find((m) => url.indexOf(m.needle) >= 0);"
+            "  if (hit) { const enc = new TextEncoder();"
+            "    const rs = new ReadableStream({ start(c) { c.enqueue(enc.encode(hit.body)); c.close(); } });"
+            "    return new Response(rs, { status: 200,"
+            "      headers: { 'Content-Type': 'text/event-stream' } }); }"
+            "  return orig(u, o); }; })();"
+        )
+        lines.append(f"await page.cdp('Page.addScriptToEvaluateOnNewDocument', {{ source: {_js(source)} }});")
+        step_ok("mock_stream")
     elif verb == "wait_function":
         expression = " ".join(p for p in (arg1, arg2) if p)
         lines.append(f"await page.waitForFunction({_js(expression)}, null, {{ timeout: {timeout_ms} }});")
@@ -393,20 +538,41 @@ def run_case(case_id: str, steps: list, base_url: str = "", run_id: str = "",
     shot_dir = Path(screenshot_dir) if screenshot_dir else temp_root() / "screenshots"
     shot_dir = shot_dir.resolve()
     shot_dir.mkdir(parents=True, exist_ok=True)
-    timeout_ms = timeout_sec() * 1000
+    timeout_ms = assert_timeout_ms()
 
+    configured_space = os.environ.get("DSH_EGO_TASK_SPACE_ID") or ego.get("task_space_id") or ""
+    prefix = str(ego.get("task_space_name_prefix") or "dsh")
+    space_name = f"{prefix}-{safe_case_id(run_id or 'run')}-{safe_case_id(case_id)}"
+    space_literal = _js(int(configured_space)) if str(configured_space).strip().isdigit() else "null"
     js_lines = [
         f"const SHOT_DIR = {_js(str(shot_dir))};",
         "const report = { status: 'passed', steps: [], assert_detail: [], skill_results: [], "
         "downloads: [], screenshot_path: '' };",
         "let currentStep = 0;",
-        f"const task = await taskSpace({_js('dsh-' + safe_case_id(run_id or 'run') + '-' + safe_case_id(case_id))});",
-        "const page = task.page('p1');",
+        f"const SPACE_ID = {space_literal};",
+        f"const SPACE_NAME = {_js(space_name)};",
+        "const entry = SPACE_ID === null ? undefined : (await listTaskSpaces()).find((s) => s.id === SPACE_ID);",
+        "const task = !entry ? await taskSpace(SPACE_NAME)",
+        "  : entry.ownership === 'user' ? await claimTaskSpace(SPACE_ID)",
+        "  : entry.ownership === 'agentDelegatedToUser' ? await takeOverTaskSpace(SPACE_ID)",
+        "  : await taskSpace(SPACE_ID);",
+        "const page = (await task.pages())[0] ?? (await task.adopt((await task.tabs())[0].page));",
+        f"const PAGE_SESSION = {_js(_page_session_source())};",
         "try {",
     ]
+    has_mock = any(
+        str((st.get("action") if isinstance(st, dict) else st) or "").startswith(("mock_route ", "mock_stream "))
+        for st in (steps or [])
+    )
+    bootstrap_done = False
     for idx, step in enumerate(steps or [], 1):
         action = step.get("action", "") if isinstance(step, dict) else str(step)
-        js_lines.extend(_emit_action(str(action), idx, base_url, shot_dir, case_id, whitelist, timeout_ms))
+        js_lines.extend(_emit_action(str(action), idx, base_url, shot_dir, case_id, whitelist,
+                                     timeout_ms, has_mock=has_mock))
+        # 会话自举要在首次导航之后做：导航前页面还是 about:blank，判断没有意义。
+        if not bootstrap_done and str(action).startswith("goto "):
+            js_lines.extend(["  " + ln for ln in SESSION_BOOTSTRAP_JS])
+            bootstrap_done = True
     js_lines.extend([
         "  console.log(JSON.stringify({ ...report, case_id: CASE_ID, run_id: RUN_ID, guide_version: GUIDE_VERSION, spaceId: task.spaceId }));",
         "} catch (e) {",
@@ -427,10 +593,15 @@ def run_case(case_id: str, steps: list, base_url: str = "", run_id: str = "",
         {k: v for k, v in result.items() if k not in ("resp_content",)}, ensure_ascii=False)
 
     space_id = result.get("spaceId")
-    if space_id is not None:
+    # 复用给定的已登录空间时必须保活：SSO 会话只存在于既有空间里，
+    # 新建空间会被 SSO 网关重定向到登录页（已实测），一旦 finish 掉后续用例全部失效。
+    reuse = bool(str(configured_space).strip().isdigit())
+    if space_id is not None and not reuse:
         try:
             _run_js(f"const task = await taskSpace({_js(space_id)}); await task.finish({{ keep: [] }}); "
                     "console.log(JSON.stringify({ finished: true }));")
         except Exception as e:
             result["finish_error"] = str(e)[:500]
+    elif reuse:
+        result["space_reused"] = True
     return result

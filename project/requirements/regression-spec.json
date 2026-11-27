@@ -407,7 +407,7 @@
         ]
       },
       "capture": {
-        "uploadUrl": "objectAbsolutePaths.0"
+        "uploadUrl": "data.objectAbsolutePaths.0"
       }
     },
     {
@@ -1018,7 +1018,7 @@
         "code": 0
       },
       "capture": {
-        "mcpId": "0.id"
+        "mcpId": "data.0.id"
       }
     },
     {
@@ -1338,7 +1338,7 @@
         ]
       },
       "capture": {
-        "contentId": "records.0.contentId"
+        "contentId": "data.records.0.contentId"
       }
     },
     {

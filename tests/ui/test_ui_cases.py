@@ -20,7 +20,7 @@ except ImportError:
 
 WORKFLOW_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(WORKFLOW_ROOT / "scripts"))
-from dsh_common import mask_sensitive, safe_case_id, temp_root  # noqa: E402
+from dsh_common import mask_sensitive, safe_case_id, temp_root, selected_case_files  # noqa: E402
 
 SCREENSHOT_DIR = temp_root() / "screenshots"
 CASE_DIR = WORKFLOW_ROOT / "cases" / "ui"
@@ -35,7 +35,7 @@ def _collect_cases():
     cases = []
     if not CASE_DIR.exists():
         return cases
-    for path in sorted(CASE_DIR.glob("*.y*ml")):
+    for path in selected_case_files(CASE_DIR):
         if path.name in IGNORE_FILES:
             continue
         with open(path, "r", encoding="utf-8") as f:
@@ -73,6 +73,15 @@ def _rel(path: Path) -> str:
         return str(path)
 
 
+def _skip_if_manual(case_id: str, case: dict) -> None:
+    # 显式声明跳过：前提在本环境无法复现，跳过比记成失败更接近事实
+    if case.get("skip"):
+        pytest.skip(f"[{case_id}] {case.get('skip_reason') or '按配置跳过'}")
+    if case.get("needs_manual_context"):
+        reasons = ", ".join(case.get("manual_context_reasons") or [])
+        pytest.skip(f"[{case_id}] 需人工浏览器上下文/路由模拟，自动执行跳过: {reasons}")
+
+
 def _resolve_url(target: str) -> str:
     if target.startswith("http://") or target.startswith("https://"):
         return target
@@ -84,6 +93,7 @@ if EGO_MODE:
 
     @pytest.mark.parametrize("case_id,case", CASES, ids=[c[0] for c in CASES])
     def test_ui_case_ego(case_id, case):
+        _skip_if_manual(case_id, case)
         result = ego_run_case(
             case_id=case_id,
             steps=case.get("steps") or [],
@@ -142,6 +152,7 @@ else:
 
     @pytest.mark.parametrize("case_id,case", CASES, ids=[c[0] for c in CASES])
     def test_ui_case(page, case_id, case):
+        _skip_if_manual(case_id, case)
         ctx = {
             "run_id": os.environ.get("DSH_RUN_ID", ""),
             "case_id": case_id,

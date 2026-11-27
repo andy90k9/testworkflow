@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dsh_common import (  # noqa: E402
     load_config, ensure_dirs, resolve, load_yaml_file, read_json,
-    write_json, read_run_id, WORKFLOW_ROOT,
+    write_json, read_run_id, selected_case_files, WORKFLOW_ROOT,
 )
 
 
@@ -96,8 +96,14 @@ def _collect_assets(cfg: dict, paths: dict, context: dict) -> list:
     assets = []
     seen = set()
     for asset_type, patterns in globs.items():
-        for pattern in patterns or []:
-            for path in sorted(WORKFLOW_ROOT.glob(str(pattern))):
+        candidates = []
+        if asset_type == "case":
+            for key in ("functional", "api_cases", "ui_cases"):
+                candidates.extend(selected_case_files(paths[key]))
+        else:
+            for pattern in patterns or []:
+                candidates.extend(WORKFLOW_ROOT.glob(str(pattern)))
+        for path in sorted(set(candidates)):
                 if not path.is_file():
                     continue
                 rel = str(path.relative_to(WORKFLOW_ROOT))
@@ -138,7 +144,7 @@ def _collect_baseline(cfg: dict, paths: dict, context: dict) -> list:
     )
     rows = []
     for key, case_type in (("functional", "functional"), ("api_cases", "api"), ("ui_cases", "ui")):
-        for path in sorted(paths[key].glob("*.y*ml")):
+        for path in selected_case_files(paths[key]):
             if path.name.startswith("example.") or "legacy" in path.parts:
                 continue
             data = load_yaml_file(path) or []

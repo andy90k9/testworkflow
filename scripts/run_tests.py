@@ -301,14 +301,24 @@ def main():
                 if it.get("status") in ("failed", "errors"):
                     failures.append(_enrich_failure(it, case_index))
         created, reused = bug_tracker.upsert_from_failures(ledger, failures, run_id)
-        if created or reused:
+        # 通过即验证：把本批次已通过用例关联的遗留缺陷自动关闭，避免台账只增不减。
+        passed_ids = []
+        for name in ("api-detail.json", "ui-detail.json", "functional-detail.json"):
+            fp = run_dir / name
+            if not fp.exists():
+                continue
+            for it in read_json(fp):
+                if it.get("status") == "passed" and it.get("case_id"):
+                    passed_ids.append(it["case_id"])
+        closed = bug_tracker.close_on_pass(ledger, passed_ids, run_id)
+        if created or reused or closed:
             bug_tracker.save_ledger(paths, ledger)
         # 始终写批次快照：本批次发现/复现的 + 台账中仍未关闭的缺陷
         snapshot = bug_tracker.batch_snapshot(ledger, run_id)
         bug_tracker.save_batch_snapshot(paths, run_id, snapshot)
         if created or reused:
             print(f"缺陷台账: 新开单 {len(created)} 条 | 复现复用 {len(reused)} 条 | "
-                  f"台账累计 {len(ledger)} 条")
+                  f"验证关闭 {len(closed)} 条 | 台账累计 {len(ledger)} 条")
             if created:
                 print("  新建缺陷: " + ", ".join(created[:10]))
         else:

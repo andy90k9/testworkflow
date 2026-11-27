@@ -1,5 +1,5 @@
 - case_id: API-001
-  run_id: run-20261127-101827
+  run_id: pending
   title: 权限上下文初始化
   module: 权限
   priority: P0
@@ -19,13 +19,15 @@
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
       Content-Type: application/json
+    body: {}
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=permissions,navigation,systemAdmin；negative=无效 token 返回 401
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-002
-  run_id: run-20261127-101827
+  run_id: pending
   title: 个人中心计数
   module: 权限
   priority: P1
@@ -44,15 +46,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-003
-  run_id: run-20261127-101827
+  run_id: pending
   title: 角色分页查询
   module: 权限
   priority: P1
@@ -71,15 +72,17 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
+    params:
+      pageNum: '1'
+      pageSize: '10'
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=total,data；negative=缺少 system:role:list 返回权限错误
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-004
-  run_id: run-20261127-101827
+  run_id: pending
   title: AI_PORTAL 菜单树
   module: 权限
   priority: P1
@@ -98,15 +101,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=停用菜单由服务端过滤
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-005
-  run_id: run-20261127-101827
+  run_id: pending
   title: 无效 token 访问上下文被拒绝
   module: 权限
   priority: P0
@@ -126,11 +128,13 @@
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer invalid-regression-token
       Content-Type: application/json
+    body: {}
   expect:
     status_code: 401
   note: negative=HTTP 401；不返回 permissions
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-006
-  run_id: run-20261127-101827
+  run_id: pending
   title: 知识文档上传签名
   module: 文件
   priority: P0
@@ -141,7 +145,7 @@
   source_id: REG-API-006
   source_version: r1.0
   action: reuse_convert
-  spec_hash: 04c71fa561703aadda078afa9978e9809f0338e0
+  spec_hash: dd80e43d3adbfaeb0962147bf536e81163d9b738
   request:
     method: POST
     path: /sys/files/getUploadUrlByType
@@ -159,9 +163,12 @@
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    uploadUrl: data.objectAbsolutePaths.0
   note: dataKeys=objectAbsolutePaths；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-007
-  run_id: run-20261127-101827
+  run_id: pending
   title: 智能体图标上传签名
   module: 文件
   priority: P1
@@ -191,8 +198,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=objectAbsolutePaths；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-008
-  run_id: run-20261127-101827
+  run_id: pending
   title: 缺少文件名被拒绝
   module: 文件
   priority: P1
@@ -219,8 +227,9 @@
     json_path: $.code
     equals: 420100
   note: negative=HTTP 200 但业务 code=420100（文件名称不能为空）
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-009
-  run_id: run-20261127-101827
+  run_id: pending
   title: 签名地址换可读链接
   module: 文件
   priority: P1
@@ -249,9 +258,10 @@
   note: negative=非法协议地址被拒绝
   needs_runtime_binding: true
   runtime_binding_spec:
-    uploadUrl: objectAbsolutePaths.0
+    uploadUrl: data.objectAbsolutePaths.0
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-010
-  run_id: run-20261127-101827
+  run_id: pending
   title: 部门列表
   module: 字典
   priority: P1
@@ -270,15 +280,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-011
-  run_id: run-20261127-101827
+  run_id: pending
   title: 知识库授权人员分页
   module: 知识库
   priority: P1
@@ -297,15 +306,17 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
+    params:
+      pageNum: '1'
+      pageSize: '10'
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=total,records；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-012
-  run_id: run-20261127-101827
+  run_id: pending
   title: 模型目录分页
   module: 模型广场
   priority: P0
@@ -334,9 +345,12 @@
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    modelId: data.data.0.id
   note: dataKeys=total,data,filters；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-013
-  run_id: run-20261127-101827
+  run_id: pending
   title: 模型条件筛选
   module: 模型广场
   priority: P1
@@ -369,8 +383,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-014
-  run_id: run-20261127-101827
+  run_id: pending
   title: 模型空结果查询
   module: 模型广场
   priority: P2
@@ -401,8 +416,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-015
-  run_id: run-20261127-101827
+  run_id: pending
   title: 模型详情
   module: 模型广场
   priority: P0
@@ -416,20 +432,22 @@
   spec_hash: 9d8d02a6aae415647e424d10b307f9c342342ced
   request:
     method: GET
-    path: /model/square/page
+    path: /model/square/{{modelId}}
     headers:
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=modelName；negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    modelId: data.data.0.id
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-016
-  run_id: run-20261127-101827
+  run_id: pending
   title: 试用初始化
   module: 模型试用
   priority: P0
@@ -443,20 +461,22 @@
   spec_hash: 3e736e8a48a7cd25d14a3f719d31b7b056691a2b
   request:
     method: GET
-    path: /model/trial/page/init
+    path: /model/trial/{{modelId}}/init
     headers:
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=supportsImage,limits,scenarios；negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    modelId: data.data.0.id
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-017
-  run_id: run-20261127-101827
+  run_id: pending
   title: 未开放试用模型被拒绝
   module: 模型试用
   priority: P1
@@ -475,15 +495,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 409
     json_path: $.code
     equals: 409
   note: negative=HTTP 409 code=409，提示暂未开放试用
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-018
-  run_id: run-20261127-101827
+  run_id: pending
   title: 非法模型标识被拒绝
   module: 模型广场
   priority: P1
@@ -502,13 +521,12 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 400
   note: negative=HTTP 400；不返回模型数据
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-019
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 广场分页
   module: Skill
   priority: P0
@@ -536,9 +554,12 @@
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    skillId: data.data.0.id
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-020
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 数量统计
   module: Skill
   priority: P1
@@ -557,15 +578,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-021
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 业务场景字典
   module: Skill
   priority: P1
@@ -584,15 +604,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-022
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 部门字典
   module: Skill
   priority: P1
@@ -611,15 +630,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-023
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 分类标签
   module: Skill
   priority: P2
@@ -638,15 +656,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-024
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 来源系统
   module: Skill
   priority: P2
@@ -665,15 +682,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-025
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 下载授权
   module: Skill
   priority: P0
@@ -694,7 +710,7 @@
       Authorization: Bearer __DSH_API_TOKEN__
       Content-Type: application/json
     body:
-      requestId: reg-download-20261120
+      requestId: reg-download-20261120-pending
   expect:
     status_code: 200
     json_path: $.code
@@ -703,8 +719,9 @@
   needs_runtime_binding: true
   runtime_binding_spec:
     skillId: data.data.0.id
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-026
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 包清单
   module: Skill
   priority: P1
@@ -723,8 +740,6 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
@@ -733,8 +748,9 @@
   needs_runtime_binding: true
   runtime_binding_spec:
     skillId: data.data.0.id
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-027
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 使用指引预览
   module: Skill
   priority: P1
@@ -753,15 +769,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=objectUrl；negative=无指引的 Skill 返回业务错误
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-028
-  run_id: run-20261127-101827
+  run_id: pending
   title: 智能体广场分页
   module: 智能体
   priority: P0
@@ -789,9 +804,12 @@
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    agentId: data.data.0.id
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-029
-  run_id: run-20261127-101827
+  run_id: pending
   title: 智能体数量统计
   module: 智能体
   priority: P1
@@ -810,15 +828,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=total；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-030
-  run_id: run-20261127-101827
+  run_id: pending
   title: 智能体场景字典
   module: 智能体
   priority: P1
@@ -837,15 +854,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-031
-  run_id: run-20261127-101827
+  run_id: pending
   title: 智能体详情
   module: 智能体
   priority: P0
@@ -859,20 +875,22 @@
   spec_hash: 3143ee5b806f0d6f11fab8a3f6441463ba6f8a78
   request:
     method: GET
-    path: /agent/square/page
+    path: /agent/{{agentId}}
     headers:
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=agentName；negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    agentId: data.data.0.id
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-032
-  run_id: run-20261127-101827
+  run_id: pending
   title: MCP 广场列表
   module: MCP
   priority: P0
@@ -883,7 +901,7 @@
   source_id: REG-API-050
   source_version: r1.0
   action: reuse_convert
-  spec_hash: 175c6e04f1733bc028fac29cb75c68cc9002a102
+  spec_hash: 5ced444629aa25e183dad8747e19e979f3347cc4
   request:
     method: GET
     path: /mcp/square
@@ -891,15 +909,16 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    mcpId: data.0.id
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-033
-  run_id: run-20261127-101827
+  run_id: pending
   title: MCP 数量统计
   module: MCP
   priority: P1
@@ -918,15 +937,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=total,sceneCounts；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-034
-  run_id: run-20261127-101827
+  run_id: pending
   title: MCP 详情
   module: MCP
   priority: P0
@@ -940,20 +958,22 @@
   spec_hash: fbb6543dc6edd93707faec17edaea8ae08139e99
   request:
     method: GET
-    path: /mcp/square
+    path: /mcp/{{mcpId}}
     headers:
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=mcpName；negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    mcpId: data.0.id
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-035
-  run_id: run-20261127-101827
+  run_id: pending
   title: 待审申请分页
   module: 我的申请
   priority: P0
@@ -982,8 +1002,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-036
-  run_id: run-20261127-101827
+  run_id: pending
   title: 已通过申请分页
   module: 我的申请
   priority: P1
@@ -1012,8 +1033,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-037
-  run_id: run-20261127-101827
+  run_id: pending
   title: 模型审核队列分页
   module: 治理审核
   priority: P0
@@ -1041,9 +1063,12 @@
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    reviewNo: data.data.0.applicationNo
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-038
-  run_id: run-20261127-101827
+  run_id: pending
   title: 审核详情
   module: 治理审核
   priority: P1
@@ -1057,20 +1082,22 @@
   spec_hash: f0e97f61b1f230766957fda40bd6039c7c0c6589
   request:
     method: GET
-    path: /publish/application/review/page
+    path: /publish/application/review/{{reviewNo}}
     headers:
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  needs_runtime_binding: true
+  runtime_binding_spec:
+    reviewNo: data.data.0.applicationNo
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-039
-  run_id: run-20261127-101827
+  run_id: pending
   title: 审核处理日志分页
   module: 治理审核
   priority: P1
@@ -1099,8 +1126,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=total,records；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-040
-  run_id: run-20261127-101827
+  run_id: pending
   title: 上下架分页
   module: 上下架
   priority: P0
@@ -1128,8 +1156,9 @@
     json_path: $.code
     equals: 0
   note: dataKeys=total,data；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-041
-  run_id: run-20261127-101827
+  run_id: pending
   title: 业务类型字典
   module: 上下架
   priority: P1
@@ -1148,15 +1177,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-042
-  run_id: run-20261127-101827
+  run_id: pending
   title: 可维护判定
   module: 知识库
   priority: P0
@@ -1175,15 +1203,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-043
-  run_id: run-20261127-101827
+  run_id: pending
   title: 维护目录树
   module: 知识库
   priority: P0
@@ -1202,15 +1229,16 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
+    params:
+      scope: maintainable
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-044
-  run_id: run-20261127-101827
+  run_id: pending
   title: 质量概览
   module: 知识库
   priority: P1
@@ -1229,15 +1257,14 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=overallScore,documentCount,qaCount；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-045
-  run_id: run-20261127-101827
+  run_id: pending
   title: 文档分页
   module: 知识库
   priority: P0
@@ -1248,7 +1275,7 @@
   source_id: REG-API-073
   source_version: r1.0
   action: reuse_convert
-  spec_hash: 175b9c8a3f4094f77adfce846209bdff571a6980
+  spec_hash: 571ce5d89b8921a35a6d0a598157a62bc50544bc
   request:
     method: GET
     path: /knowledge-directory/documents
@@ -1256,15 +1283,19 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
+    params:
+      pageNum: '1'
+      pageSize: '10'
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
+  capture:
+    contentId: data.records.0.contentId
   note: dataKeys=total,records；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-046
-  run_id: run-20261127-101827
+  run_id: pending
   title: 问答分页
   module: 知识库
   priority: P1
@@ -1283,15 +1314,17 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
+    params:
+      pageNum: '1'
+      pageSize: '10'
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=total,records；negative=—
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-047
-  run_id: run-20261127-101827
+  run_id: pending
   title: 问答导入模板下载
   module: 知识库
   priority: P2
@@ -1310,13 +1343,12 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
   expect:
     status_code: 200
   note: negative=无权限时拒绝
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-048
-  run_id: run-20261127-101827
+  run_id: pending
   title: 目录同步信息
   module: 知识库
   priority: P1
@@ -1335,15 +1367,17 @@
       Accept: application/json
       clientId: 4d39ab9e836f48d799d990e34ed5cd20
       Authorization: Bearer __DSH_API_TOKEN__
-    body:
-      raw: 无请求体
+    params:
+      directoryId: '2'
+      knowledgeType: qa-dataset
   expect:
     status_code: 200
     json_path: $.code
     equals: 0
   note: dataKeys=bound；negative=不存在的目录返回 404
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-049
-  run_id: run-20261127-101827
+  run_id: pending
   title: 文档预览换链
   module: 知识库
   priority: P0
@@ -1372,9 +1406,10 @@
   note: dataKeys=fileAbsolutePath；negative=—
   needs_runtime_binding: true
   runtime_binding_spec:
-    contentId: records.0.contentId
+    contentId: data.records.0.contentId
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: API-050
-  run_id: run-20261127-101827
+  run_id: pending
   title: 非法内容 ID 预览被拒绝
   module: 知识库
   priority: P1
@@ -1401,3 +1436,4 @@
     json_path: $.code
     equals: 400
   note: negative=HTTP 400 code=400（ID 格式/存在性校验）
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217

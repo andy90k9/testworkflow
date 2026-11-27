@@ -57,6 +57,9 @@ UI_SCHEMA = {
         "hover <selector>", "wait <seconds>", "screenshot <name>",
         "expect_url_contains <fragment>", "expect_text <selector> <text>",
         "expect_visible <selector>",
+        "mock_route <url_contains> <status> <json_body> [times]",
+        "mock_stream <url_contains> <sse_text>",
+        "mock_off <url_contains>",
         "download <trigger_selector> <save_path>", "upload <selector> <path|path>",
         "popup <trigger_selector>", "accept_dialog <text?>", "dismiss_dialog <text?>",
         "mouse_click <x,y>", "mouse_move <x,y>", "mouse_wheel <x,y>",
@@ -68,6 +71,7 @@ UI_SCHEMA = {
 SUPPORTED_ACTIONS = {
     "goto", "click", "fill", "press", "check", "select", "hover", "wait",
     "screenshot", "expect_url_contains", "expect_text", "expect_visible",
+    "mock_route", "mock_stream", "mock_off",
     "download", "upload", "popup", "accept_dialog", "dismiss_dialog",
     "mouse_click", "mouse_move", "mouse_wheel", "key_press", "type_text",
     "paste", "insert_text", "reload", "wait_function",
@@ -146,10 +150,10 @@ def validate_case(data: dict, case_type: str, source: str):
 
 def validate_directory(directory, case_type: str):
     """校验目录下所有 YAML 用例。返回 (全部错误, 全部警告, 用例数)。"""
-    from dsh_common import collect_yaml_files, load_yaml_file
+    from dsh_common import selected_case_files, load_yaml_file
 
     errors, warnings, count = [], [], 0
-    for path in collect_yaml_files(directory):
+    for path in selected_case_files(directory):
         count += 1
         try:
             data = load_yaml_file(path)

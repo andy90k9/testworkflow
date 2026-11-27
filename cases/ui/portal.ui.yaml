@@ -1,5 +1,5 @@
 - case_id: UI-001
-  run_id: run-20261127-101827
+  run_id: pending
   title: 匿名访问治理页跳转 SSO
   module: 登录
   priority: P0
@@ -18,8 +18,15 @@
   - action: wait 2
   - action: expect_url_contains service=
   - action: screenshot reg-ui-001
+  needs_manual_context: true
+  manual_context_reasons:
+  - browser.newContext
+  - storageState
+  skip: true
+  skip_reason: 需匿名未登录态，EGO 会话始终携带有效 SSO，清空 cookie/storage 后仍直接放行
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-002
-  run_id: run-20261127-101827
+  run_id: pending
   title: 侧边栏渲染服务端菜单
   module: 导航
   priority: P1
@@ -35,10 +42,11 @@
   expected: 菜单项 >=6 且含模型广场/Skill/我的申请
   steps:
   - action: goto /#/model-market
-  - action: expect_visible nav
+  - action: expect_visible nav >> nth=0
   - action: screenshot reg-ui-002
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-003
-  run_id: run-20261127-101827
+  run_id: pending
   title: 卡片数与总数一致
   module: 模型广场
   priority: P0
@@ -56,8 +64,9 @@
   - action: goto /#/model-market
   - action: expect_visible [data-testid="model-grid"]
   - action: screenshot reg-ui-003
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-004
-  run_id: run-20261127-101827
+  run_id: pending
   title: 模型详情与申请入口
   module: 模型广场
   priority: P1
@@ -72,13 +81,14 @@
   spec_hash: 4dbcd9ad71f3488037bddec5dfe77bb459b8d3be
   expected: 详情面板打开且申请按钮可用
   steps:
-  - action: goto /
-  - action: click [data-testid="model-card"]
+  - action: goto /#/model-market
+  - action: click [data-testid="model-card"] >> nth=0
   - action: expect_visible [data-testid="model-detail-panel"]
   - action: expect_visible [data-testid="model-detail-apply"]
   - action: screenshot reg-ui-004
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-005
-  run_id: run-20261127-101827
+  run_id: pending
   title: 试用面板初始化与空输入态
   module: 模型试用
   priority: P1
@@ -93,13 +103,14 @@
   spec_hash: e6ae17f18abe2970f1400816379c7b2abc59a897
   expected: 试用面板可打开；输入为空时发送禁用
   steps:
-  - action: goto /
-  - action: click [data-testid="model-card-trial"]
+  - action: goto /#/model-market
+  - action: click [data-testid="model-card-trial"] >> nth=0
   - action: expect_visible [data-testid="model-trial-panel"]
   - action: expect_visible [data-testid="trial-input"]
   - action: screenshot reg-ui-005
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-006
-  run_id: run-20261127-101827
+  run_id: pending
   title: 流式回答渲染（路由模拟 SSE）
   module: 模型试用
   priority: P1
@@ -114,13 +125,26 @@
   spec_hash: 367526c3b188280b60a3e438f43603d39fa0305f
   expected: 回答区出现模拟文本；统计行渲染；结论标注“路由模拟”
   steps:
-  - action: goto /
+  - action: 'mock_stream /model/trial/chat event:delta
+
+      data:{"text": "回归巡检回复"}
+
+
+      event:done
+
+      data:{}
+
+
+      '
+  - action: goto /#/model-market
+  - action: click [data-testid="model-card-trial"] >> nth=0
   - action: fill [data-testid="trial-input"] 请自我介绍
   - action: click [data-testid="trial-send"]
-  - action: expect_text [data-testid="trial-answer"] 回归巡检回复
+  - action: expect_text [data-testid="trial-turn"] 回归巡检回复
   - action: screenshot reg-ui-006
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-007
-  run_id: run-20261127-101827
+  run_id: pending
   title: 页签与列表渲染
   module: 我的申请
   priority: P0
@@ -136,11 +160,12 @@
   expected: 标题与状态页签可见；列表或空态渲染
   steps:
   - action: goto /#/my-applications
-  - action: expect_visible heading:has-text("我的申请")
-  - action: expect_visible navigation:has-text("申请状态筛选")
+  - action: expect_visible :is(h1,h2,h3,h4,h5,h6):has-text("我的申请")
+  - action: expect_visible nav[aria-label="申请状态筛选"]
   - action: screenshot reg-ui-007
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-008
-  run_id: run-20261127-101827
+  run_id: pending
   title: 审核类型页签与队列
   module: 治理审核
   priority: P0
@@ -157,10 +182,11 @@
   steps:
   - action: goto /#/governance?section=review
   - action: expect_visible [data-testid="review-type-tab-1"]
-  - action: expect_visible navigation:has-text("审核申请类型")
+  - action: expect_visible nav[aria-label="审核申请类型"]
   - action: screenshot reg-ui-008
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-009
-  run_id: run-20261127-101827
+  run_id: pending
   title: Skill 广场列表渲染
   module: Skill
   priority: P1
@@ -176,10 +202,12 @@
   expected: 列表区域可见且卡片数 >0
   steps:
   - action: goto /#/skill-market
-  - action: expect_visible region
+  - action: expect_visible .skill-card-grid > *
+  - action: expect_visible [role="region"][aria-label="Skill 列表，可横向滚动"]
   - action: screenshot reg-ui-009
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-010
-  run_id: run-20261127-101827
+  run_id: pending
   title: 智能体广场列表渲染
   module: 智能体
   priority: P1
@@ -195,10 +223,12 @@
   expected: 列表区域可见且卡片数 >0
   steps:
   - action: goto /#/agent-market
-  - action: expect_visible region
+  - action: expect_visible .skill-card-grid > *
+  - action: expect_visible [role="region"][aria-label="智能体列表"]
   - action: screenshot reg-ui-010
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-011
-  run_id: run-20261127-101827
+  run_id: pending
   title: MCP 广场列表渲染
   module: MCP
   priority: P1
@@ -214,10 +244,12 @@
   expected: 列表区域可见且卡片数 >0
   steps:
   - action: goto /#/mcp-market
-  - action: expect_visible region
+  - action: expect_visible .skill-card-grid > *
+  - action: expect_visible [role="region"][aria-label="MCP 列表"]
   - action: screenshot reg-ui-011
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-012
-  run_id: run-20261127-101827
+  run_id: pending
   title: 知识库目录与内容列表
   module: 知识库
   priority: P1
@@ -233,12 +265,13 @@
   expected: 知识库标题、团队目录与内容列表可见
   steps:
   - action: goto /#/document-library
-  - action: 'expect_visible page.getByRole(''heading'', { name: /知识库/ })'
-  - action: expect_visible aside[aria-label=
-  - action: expect_visible section[aria-label=
+  - action: expect_visible :is(h1,h2,h3,h4,h5,h6):has-text("知识库")
+  - action: expect_visible aside[aria-label="团队目录"]
+  - action: expect_visible section[aria-label="知识内容列表"]
   - action: screenshot reg-ui-012
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-013
-  run_id: run-20261127-101827
+  run_id: pending
   title: 文档预览打开新窗口（路由模拟）
   module: 知识库
   priority: P2
@@ -253,11 +286,17 @@
   spec_hash: f748a9936334c3987c53a423746e30f6c05bfd1e
   expected: 新窗口请求预览地址且带文档参数；结论标注“路由模拟”
   steps:
-  - action: goto /
-  - action: click button:has-text("查看")
+  - action: 'mock_route /sys/files/getPreviewUrl 200 {"fileAbsolutePath": "https://example.test/doc.md?sign=abc",
+      "serviceUrl": "https://example.test/preview"}'
+  - action: goto /#/document-library
+  - action: click button:has-text("查看") >> nth=0
   - action: screenshot reg-ui-013
+  needs_manual_context: true
+  manual_context_reasons:
+  - waitForEvent
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-014
-  run_id: run-20261127-101827
+  run_id: pending
   title: 列表 503 错误态与恢复重试（路由模拟）
   module: 模型广场
   priority: P1
@@ -272,13 +311,16 @@
   spec_hash: e8a649f2dae68924251647ac568837fd2402389d
   expected: 先展示错误态，重试后列表恢复；结论标注“路由模拟”
   steps:
+  - action: mock_route /model/square/page 503 {"code":503,"msg":"mock 503"}
   - action: goto /#/model-market
   - action: expect_visible [data-testid="model-error"]
-  - action: click button:has-text("重试")
-  - action: expect_visible [data-testid="model-card"]
+  - action: mock_off /model/square/page
+  - action: click button:has-text("重 试")
+  - action: expect_visible [data-testid="model-card"] >> nth=0
   - action: screenshot reg-ui-014
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
 - case_id: UI-015
-  run_id: run-20261127-101827
+  run_id: pending
   title: 最小权限下不渲染未授权入口（路由模拟）
   module: 导航
   priority: P2
@@ -293,5 +335,8 @@
   spec_hash: bbba5cd3be938dc9c9c0a2659f3744601b243801
   expected: 侧栏不含治理后台等未授权入口；结论标注“路由模拟”
   steps:
+  - action: 'mock_route /rbac/runtime/context 200 {"id": "1", "name": "模型广场", "path":
+      "/model-market"}'
   - action: goto /#/model-market
   - action: screenshot reg-ui-015
+  spec_bundle_hash: 18799655fb01bbb0fb3649dc84deaeb8c670c217
